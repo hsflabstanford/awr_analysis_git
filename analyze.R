@@ -7,8 +7,26 @@
 ################################# PREP ################################# 
 
 data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Data extraction"
-code.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Data extraction/awr_data_extraction_git"
-setwd(code.dir); source("helper.R")
+code.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Analysis/awr_analysis_git"
+results.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Analysis/Results from R"
+overleaf.dir = "~/Dropbox/Apps/Overleaf/AWR (animal welfare interventions review)/R_objects"
+
+setwd(code.dir); source("helper_analysis.R")
+
+# for formatting stats
+digits = 2
+pval.cutoff = 10^-4  # threshold for using "<"
+options(scipen=999)
+
+
+library(dplyr)
+library(ICC)
+library(metafor)
+library(robumeta)
+library(MetaUtility)
+library(weightr)
+library(PublicationBias)
+library(tableone)
 
 # prepped dataset
 setwd(data.dir)
@@ -27,49 +45,148 @@ table(!is.na(d$logRR), d$use.rr.analysis)
 # make different datasets for different analyses
 d.veg = d[ d$use.veg.analysis == 1,]
 d.grams = d[ d$use.grams.analysis == 1,]
-d = d[ d$use.rr.analysis == 1 & d$exclude.main == 0,]  # main dataset
 
-# ~~ move this?
-d$perc.male = as.numeric(d$perc.male)
+# main dataset without high-bias challenges
+# ~~~ after coding of exclude.main is complete, remove the is.na call
+d = d[ d$use.rr.analysis == 1 & !is.na(d$exclude.main) & d$exclude.main == 0,]  
+d = droplevels(d)
+d$n.paper = as.numeric( as.character(d$n.paper) )
+
+# article-level dataset
+d.arts = d[ !duplicated(d$authoryear), ]
 
 
-################################# BASICS ################################# 
 
-# currently: 82 point estimates from 27 studies; >22,000 subjects :D
-# number of studies in primary analysis
-( n.studies = length(unique(d$authoryear)) )
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+#                             0. CHARACTERISTICS OF INCLUDED STUDIES            
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+
+################################# BASICS #################################
+
+# number of articles
+update_result_csv( name = "k articles",
+                   section = 0,
+                   value = length(unique(d$authoryear)),
+                   print = FALSE )
 
 # number of point estimates
-( n.ests = nrow(d) )
+update_result_csv( name = "k ests",
+                   section = 0,
+                   value = nrow(d),
+                   print = FALSE )
 
 # total number of unique subjects
-n.paper = d$n.paper[ !duplicated(d$authoryear) ]
-( n.total = sum(n.paper) )
-# # sanity check: every paper should have only 1 unique value for sample size (since
-# #   it should be the total N in the entire paper)
-# View( d %>% group_by(authoryear) %>%
-#   summarise( length(unique(n.paper) ) ) )
+update_result_csv( name = "n total",
+                   section = 0,
+                   value = sum(d.arts$n.paper),
+                   print = FALSE )
 
-# median n per paper
-( n.median = median(n.paper) )
+# sample size per paper
+update_result_csv( name = "n per article median",
+                   section = 0,
+                   value = median(d.arts$n.paper),
+                   print = FALSE )
+update_result_csv( name = "n per article Q1",
+                   section = 0,
+                   value = round( quantile(d.arts$n.paper, 0.25) ),
+                   print = FALSE )
+update_result_csv( name = "n per article Q3",
+                   section = 0,
+                   value = round( quantile(d.arts$n.paper, 0.75) ),
+                   print = FALSE )
+
+# percent articles published
+update_result_csv( name = "Perc articles published",
+                   section = 0,
+                   value = round( 100 * mean( d.arts$published ), 0 ),
+                   print = FALSE )
+
+# how we obtained point estimates
+t = d %>% group_by(stats.source) %>%
+  summarise( k = n() ) %>%
+  mutate( perc = round( 100 * k / sum(k) ) )
+             
+update_result_csv( name = paste( "Stats source", t$stats.source, sep = " " ),
+                   section = 0,
+                   value = t$perc,
+                   print = TRUE )
+
+# median number of point estimates contributed by each study
+update_result_csv( name = "Perc articles multiple ests",
+                   section = 0,
+                   value = round( 100 * mean( table(d$authoryear) > 1 ) ),
+                   print = TRUE )
 
 # ICC of point estimates clustered in papers
-library(ICC)
-ICCest(authoryear, logRR, d)
+update_result_csv( name = "ICC",
+                   section = 0,
+                   value = round( ICCest(authoryear, logRR, d)$ICC, digits ),
+                   print = TRUE )
 
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-#                                      MAIN ANALYSES            
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
-################################# OVERALL META-ANALYSIS #################################
+################################# TABLE 1 (INDIVIDUAL STUDY CHARACTERISTICS) #################################
+
+# variables to include in table
+analysis.vars = c(
+  #"design",
+  #"published",
+  #"n.paper",
+  #"effect.measure",
+  "perc.male",
+  "stats.source",
+  "x.has.text",
+  "x.has.visuals",
+  "x.suffer",
+  "x.pure.animals",
+  "x.min.exposed",
+  #"x.long",
+  "x.tailored",
+  "x.pushy",
+  "y.cat",
+  "y.lag.days")
+
+##### Make Table 1 #####
+# to force use of median
+median.vars = c( "perc.male",
+                "x.min.exposed",
+                "y.lag.days" )
+
+t = CreateTableOne(data=d[,analysis.vars],
+                     includeNA = TRUE )
+print(t, nonnormal = median.vars)
+#xtable( print(t, noSpaces = TRUE, printToggle = FALSE, nonnormal = median.vars) )
+
+
+#################################  #################################
+
+
+
+
+################################# TABLE 2 (RISKS OF BIAS AT ARTICLE LEVEL) #################################
+
+quality.vars = c( "design", names(d)[ grepl("qual", names(d)) ] )
+
+CreateTableOne(data=d[,quality.vars], includeNA = TRUE)
+
+
+update_result_csv( name = "Perc randomized",
+                   section = 0,
+                   value = round( 100 * mean(d$randomized), 0 ),
+                   print = FALSE )
+
+# bm: separate the quality variables into study-level and intervention-level (and maybe separate the tables that was
+#  as well?)
+#  for example, public data/code should be at study level
+
+
+################################# 1. OVERALL META-ANALYSIS #################################
 
 ##### Robust Meta-Analysis ######
 # also reproduced in the subset analyses, but need to run here for 
 #  forest plotting joy 
 # allows for correlated point estimates within studies
 # and has no distributional assumptions
-library(robumeta)
 ( meta.rob = robu( logRR ~ 1, 
                    data = d, 
                    studynum = as.factor(authoryear),
@@ -85,9 +202,27 @@ mu.hi = meta.rob$reg_table$CI.U
 mu.se = meta.rob$reg_table$SE
 mu.pval = meta.rob$reg_table$prob
 
-exp(mu)
-exp(mu.lo)
-exp(mu.hi)
+
+update_result_csv( name = "Overall muhat RR",
+                   section = 1,
+                   value = round( exp(mu), digits ),
+                   print = FALSE )
+update_result_csv( name = "Overall muhat RR lo",
+                   section = 1,
+                   value = round( exp(mu.lo), digits ),
+                   print = FALSE )
+update_result_csv( name = "Overall muhat RR hi",
+                   section = 1,
+                   value = round( exp(mu.hi), digits ),
+                   print = FALSE )
+update_result_csv( name = "Overall muhat RR pval",
+                   section = 1,
+                   value = MetaUtility::format_stat( mu.pval, cutoffs = c(.01, pval.cutoff) ),
+                   print = FALSE )
+update_result_csv( name = "Overall tau logRR",
+                   section = 1,
+                   value = round( sqrt(t2), digits ),
+                   print = TRUE )
 
 
 ##### Check Normality ######
@@ -101,16 +236,19 @@ shapiro.test(std)
 
 ################################# CALIBRATED ENSEMBLE ESTIMATES #################################
 
+
+# ensemble estimates
 d$ens = my_ens(yi = d$logRR, 
                sei = sqrt(d$varlogRR))
 
 ggplot( data = d,
             aes(x = exp(d$ens))) +
   
-  geom_density() +
   
   geom_vline(xintercept = 1,
              color = "gray") +
+  
+  geom_density() +
   
   # pooled point estimate
   geom_vline(xintercept = exp(mu),
@@ -118,7 +256,7 @@ ggplot( data = d,
              lty = 2) +
   
   xlab("Estimated relative risk of low vs. high meat") +
-  ylab("Kernel density estimate") +
+  ylab("Kernel density estimate of true effects") +
   
   scale_x_continuous( limits = c(0.8, 1.8),
                       breaks = seq(0.8, 1.8, .2) ) +
@@ -213,7 +351,7 @@ base = ggplot( data = dp, aes( x = exp(logRR),
   geom_point( data = dp, aes( x = exp(ens),
                               y = unique ),
               size = 3,
-              shape = 4,
+              shape = 124,
               color = "red") +
   
   xlab( "Estimated relative risk of low vs. high meat" ) +
@@ -244,59 +382,75 @@ base = ggplot( data = dp, aes( x = exp(logRR),
 
 base
 
+setwd(results.dir)
 ggsave( "forest.pdf",
         width = 15,
         height = 10 )
 
+
+setwd(overleaf.dir)
+ggsave( "forest.pdf",
+        width = 15,
+        height = 10 )
+
+
 ################################# NPPHAT :D #################################
 
-library(MetaUtility)
+# ~~~ bm: shorted x-axis on plot to match length of q vec
 
-# q.vec = c( log(1), log(1.1), log(1.2), log(1.5) )
-# 
-# prop_stronger( q = log(1.5),
-#                tail = "above",
-#                estimate.method = "calibrated",
-#                ci.method = "calibrated",
-#                dat = d,
-#                yi.name = "yi",
-#                vi.name = "vi" )
+npphat.from.scratch = FALSE 
 
 
-
-##### Make Plotting Dataframe #####
-q.vec = seq( 0, log(2), 0.01 )
-ql = as.list(q.vec)
-
-
-
-# again pass threshold and calibrated estimates on log-RR scale
-Phat.above.vec = lapply( ql,
-                     FUN = function(.q) mean( d$ens > .q, na.rm = TRUE ) )
-
-res = data.frame( q = q.vec,
-                  Est = unlist(Phat.above.vec) )
-
-
-##### Selective Bootstrapping #####
-
-# look at just the values of q at which Phat jumps
-#  this will not exceed the number of point estimates in the meta-analysis
-res.short = res[ diff(res$Est) != 0, ]
-
-library(dplyr)
-
-# bootstrap a CI for each entry in res.short
-temp = res.short %>% rowwise() %>%
-  do( prop_stronger( q = .$q, 
-                     tail = "above",
-                     estimate.method = "calibrated",
-                     ci.method = "calibrated",
-                     dat = d,
-                     R = 2000 ) )
-
-# merge this with the full-length res dataframe, merging by Phat itself
-res = merge( res, temp, by.x = "Est", by.y = "Est")
+if (npphat.from.scratch == TRUE) {
+  ##### Make Plotting Dataframe #####
+  q.vec = seq( 0, log(2), 0.01 )
+  ql = as.list(q.vec)
+  
+  # again pass threshold and calibrated estimates on log-RR scale
+  Phat.above.vec = lapply( ql,
+                           FUN = function(.q) mean( d$ens > .q, na.rm = TRUE ) )
+  
+  res = data.frame( q = q.vec,
+                    Est = unlist(Phat.above.vec) )
+  
+  
+  ##### Selective Bootstrapping #####
+  
+  # # look at just the values of q at which Phat jumps
+  # #  this will not exceed the number of point estimates in the meta-analysis
+  res.short = res[ diff(res$Est) != 0, ]
+  
+  library(dplyr)
+  
+  # # bootstrap a CI using only the values of q at which Phat jumps
+  q.jump = res.short$q
+  
+  temp.l = lapply( q.jump, 
+                   FUN = function(.q) prop_stronger( q = .q, 
+                                                     tail = "above",
+                                                     estimate.method = "calibrated",
+                                                     ci.method = "calibrated",
+                                                     dat = d,
+                                                     R = 2000 ) )
+  
+  temp.df = do.call( rbind, temp.l )
+  temp.df$q = q.jump
+  
+  
+  # merge this with the full-length res dataframe, merging by Phat itself
+  res = merge( res, temp.df, by.x = "q", by.y = "q")
+  
+  # turn into percentage
+  res$Est = 100*res$Est.x # ~~~ why are there 2 different estimates that are different??
+  res$lo = 100*res$lo
+  res$hi = 100*res$hi
+  
+  setwd(results.dir)
+  write.csv(res, "npphat_results.csv")
+  
+} else {
+  res = read.csv("npphat_results.csv")
+}
 
 
 
@@ -308,33 +462,142 @@ ggplot( data = res,
              y = Est ) ) +
   theme_bw() +
   
-  # # proprtion "r" line
-  # geom_hline( yintercept = r, 
-  #             lty = 2,
-  #             color = "red" ) +
-  # 
-  # That line
+  # pooled point estimate
   geom_vline( xintercept = exp(mu),
               lty = 2,
               color = "black" ) +
   
-  scale_x_continuous( limits=c(1, 1.5), breaks=seq(1, 1.5, .1) ) +
-  #scale_y_continuous(  breaks = seq(1, log(), .1) ) +
+  scale_y_continuous(  breaks = seq(0, 100, 10) ) +
+  scale_x_continuous(  breaks = seq(1, 2, .1) ) +
+  
   geom_line(lwd=1.2) +
   
   xlab("Threshold (RR scale)") +
-  ylab( paste( "Estimated proportion of studies with true RR above threshold" ) ) +
+  ylab( paste( "Estimated percent of effects above threshold" ) ) 
   
-  geom_ribbon( aes(ymin=res$lo, ymax=res$hi), alpha=0.15, fill = "black" ) 
+  #geom_ribbon( aes(ymin=res$lo, ymax=res$hi), alpha=0.15, fill = "black" ) 
 
 # # parametric CI
 # geom_ribbon( aes(ymin=res$CI.lo.param, ymax=res$CI.hi.param), alpha=0.15, fill = "blue" )   
 
 # 8 x 6 works well
 
-# bm:
-# ~~~ look into jaggedyness
+setwd(results.dir)
+ggsave( "npphat.pdf",
+        width = 8,
+        height = 6 )
 
+
+setwd(overleaf.dir)
+ggsave( "npphat.pdf",
+        width = 9,
+        height = 6 )
+
+
+##### Add to Results a Few Selected Values ####
+
+#### Phat > 1 #####
+update_result_csv( name = "Phat above 1",
+                   section = 1,
+                   value = round( res$Est[ res$q == log(1) ], 0 ),
+                   print = FALSE )
+update_result_csv( name = "Phat above 1 lo",
+                   section = 1,
+                   value = round( res$lo[ res$q == log(1) ], 0 ),
+                   print = FALSE )
+update_result_csv( name = "Phat above 1 hi",
+                   section = 1,
+                   value = round( res$hi[ res$q == log(1) ], 0 ),
+                   print = TRUE )
+
+#### Phat > 1.1 #####
+# this exact value of q isn't in the dataframe above
+Phat = prop_stronger( q = log(1.1), 
+                      tail = "above",
+                      estimate.method = "calibrated",
+                      ci.method = "calibrated",
+                      dat = d,
+                      R = 2000 )
+update_result_csv( name = "Phat above 1.1",
+                   section = 1,
+                   value = round( 100 * Phat$Est,  ),
+                   print = FALSE )
+update_result_csv( name = "Phat above 1.1 lo",
+                   section = 1,
+                   value = round( 100 * Phat$lo, 0 ),
+                   print = FALSE )
+update_result_csv( name = "Phat above 1.1 hi",
+                   section = 1,
+                   value = round( 100 * Phat$hi, 0 ),
+                   print = FALSE )
+
+
+#### Phat > 1.2 #####
+Phat = prop_stronger( q = log(1.2), 
+                            tail = "above",
+                            estimate.method = "calibrated",
+                            ci.method = "calibrated",
+                            dat = d,
+                            R = 2000 )
+update_result_csv( name = "Phat above 1.2",
+                   section = 1,
+                   value = round( 100 * Phat$Est,  ),
+                   print = FALSE )
+update_result_csv( name = "Phat above 1.2 lo",
+                   section = 1,
+                   value = round( 100 * Phat$lo, 0 ),
+                   print = FALSE )
+update_result_csv( name = "Phat above 1.2 hi",
+                   section = 1,
+                   value = round( 100 * Phat$hi, 0 ),
+                   print = FALSE )
+
+
+#### Phat < 0.90 #####
+
+Phat.below = prop_stronger( q = log(.9), 
+                            tail = "below",
+                            estimate.method = "calibrated",
+                            ci.method = "calibrated",
+                            dat = d,
+                            R = 2000 )
+
+update_result_csv( name = "Phat below 0.9",
+                   section = 1,
+                   value = round( 100*Phat.below$Est, 0 ),
+                   print = FALSE )
+update_result_csv( name = "Phat below 0.9 lo",
+                   section = 1,
+                   value = round( 100*Phat.below$lo, 0 ),
+                   print = FALSE )
+update_result_csv( name = "Phat below 0.9 hi",
+                   section = 1,
+                   value = round( 100*Phat.below$hi, 0 ),
+                   print = TRUE )
+
+
+
+#### Phat < 1 #####
+
+Phat.below = prop_stronger( q = log(1), 
+                            tail = "below",
+                            estimate.method = "calibrated",
+                            ci.method = "calibrated",
+                            dat = d,
+                            R = 2000 )
+
+update_result_csv( name = "Phat below 1",
+                   section = 1,
+                   value = round( 100*Phat.below$Est, 0 ),
+                   print = FALSE )
+update_result_csv( name = "Phat below 1 lo",
+                   section = 1,
+                   value = round( 100*Phat.below$lo, 0 ),
+                   print = FALSE )
+update_result_csv( name = "Phat below 1 hi",
+                   section = 1,
+                   value = round( 100*Phat.below$hi, 0 ),
+                   print = TRUE )
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -359,36 +622,17 @@ ggplot( data = res,
 ################################# STUDY CHARACTERISTICS AND QUALITY TABLE #################################
 
 
-analysis.vars = c("effect.measure",
-                  "perc.male",
-                  "design",
-                  "published",
-                  "x.has.text",
-                  "x.has.visuals",
-                  "x.suffer",
-                  "x.pure.animals",
-                  "x.long",
-                  "x.tailored",
-                  "x.pushy",
-                  "x.min.exposed",
-                  "y.cat",
-                  "y.lag.days"
-                  )
-
-quality.vars = grepl("qual", names(d))
-
-library(tableone)
-
-# ** will become Tables 1-2 for paper
-CreateTableOne(data=d[,analysis.vars], includeNA = TRUE)
-CreateTableOne(data=d[,quality.vars], includeNA = TRUE)
-
 # how many meet bar of high quality?
 d = d %>% mutate( hi.qual = grepl("RCT", design) == TRUE & 
-                    qual.y.prox %in% c("Self-reported", "Actual behavior") )
-table(d$hi.qual)
-d$authoryear[ d$hi.qual == TRUE ]
+                    #qual.y.prox %in% c("Self-reported", "Actual behavior") &
+                      !is.na(qual.missing) & qual.missing < 10 )   # reducing this to 5 doesn't change number of studies
 
+table(d$hi.qual)
+unique( d$authoryear[ d$hi.qual == TRUE ] )
+
+# compare to my personal list of methodological favorites
+unique( d$authoryear[ d$mm.fave == 1 ] )
+# good! seems to line up well :)
 
 
 ################################# RUN ALL MODERATOR AND SUBSET ANALYSES #################################
@@ -405,32 +649,6 @@ boot.reps = 500  # ~~ increase later
 
 digits = 2
 
-
-# ~~ move this?
-# recode percent male as a 10-percentage point increase
-d$perc.male.10 = d$perc.male/10
-library(car)
-d$x.pushy = recode_factor( d$x.pushy,
-                    "No request" = "a.No request",
-                    "Reduce" = "b.Reduce",
-                    "Go vegetarian" = "c.Go vegetarian",
-                    "Go vegan" = "d.Go vegan",
-                    "Mixed" = "e.Mixed")
-
-# collapse categories
-d$qual.y.prox2 = recode_factor( d$qual.y.prox,
-                           "Actual" = "b.Actual or self-reported",
-                           "Self-reported" = "b.Actual or self-reported",
-                           "Intended" = "a.Intended")
-
-# collapse categories
-# any request vs. no request
-d$x.makes.request = recode_factor( d$x.pushy,
-                            "a.No request" = 0,
-                            "b.Reduce" = 1,
-                            "c.Go vegetarian" = 1,
-                            "d.Go vegan" = 1,
-                            "e.Mixed" = 1)
 
 # two studies have really huge logRRs, as can be seen in significance funnel
 d$non.extreme.logRR = d$logRR < 1.5
@@ -472,7 +690,66 @@ for (i in 1:length(subsets)) {
 # save results
 write.csv(resE, "subsets_table.csv", row.names = FALSE)
 
-##### Moderators #####
+
+##### Moderators in One Big Model #####
+if( exists("resE") ) rm(resE)
+moderators = c(
+              "published",
+               "x.has.text",
+               "x.has.visuals",
+               "x.suffer",
+               "x.makes.request",
+               "x.long",
+               "y.long.lag",
+               "qual.y.prox2",
+               "perc.male.10"
+               )
+
+linpred.string = paste( moderators, collapse=" + ")
+string = paste( "logRR ~ ", linpred.string, collapse = "")
+
+( meta = robu( eval( parse( text = string ) ), 
+               data = d, 
+               studynum = as.factor(authoryear),
+               var.eff.size = varlogRR,
+               modelweights = "HIER",
+               small = TRUE) )
+
+est = meta$b.r
+t2 = meta$mod_info$tau.sq
+mu.lo = meta$reg_table$CI.L
+mu.hi = meta$reg_table$CI.U
+mu.se = meta$reg_table$SE
+mu.pval = meta$reg_table$prob
+
+# sanity check
+( meta = robu( logRR ~ x.makes.request, 
+               data = d, 
+               studynum = as.factor(authoryear),
+               var.eff.size = varlogRR,
+               modelweights = "HIER",
+               small = TRUE) )
+
+# look at correlation of moderators that are numeric
+vars = c(
+  "published",
+  "x.has.text",
+  "x.has.visuals",
+  "x.suffer",
+  "x.makes.request",
+  "x.long",
+  "y.long.lag",
+  "perc.male.10"
+)
+cor.mat = cor(d[,vars], use = "pairwise.complete.obs")
+# bm
+
+# which variables are most correlated?
+
+
+
+
+##### Moderators in Separate Models #####
 if( exists("resE") ) rm(resE)
 moderators = c("published",
                "x.has.text",
