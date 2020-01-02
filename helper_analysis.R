@@ -254,3 +254,288 @@ update_result_csv = function( name,
     View(res)
   }
 }
+
+
+
+
+
+################################ SIGNIFICANCE FUNNEL ################################
+
+# edited from the package version (marked with "~~") to fix the colored blocks issues
+
+significance_funnel2 = function( yi,
+                                vi,
+                                xmin = min(yi),
+                                ymin = min( sqrt(vi) ),
+                                xmax = max(yi),
+                                ymax = max( sqrt(vi) ),
+                                plot.pooled = TRUE ) {
+  
+  browser()
+  
+  d = data.frame(yi, vi)
+  d$sei = sqrt(vi)
+  
+  # calculate p-values
+  d$pval = 2 * ( 1 - pnorm( abs(yi) / sqrt(vi) ) )
+  
+  # variable for positive vs. nonpositive studies
+  d$positive = rep(NA, nrow(d))
+  d$positive[ (d$yi > 0) & (d$pval < 0.05) ] = "Affirmative"
+  d$positive[ (d$yi < 0) | (d$pval >= 0.05) ] = "Non-affirmative"
+  
+  # reorder levels for plotting joy
+  d$positive = factor( d$positive, c("Non-affirmative", "Affirmative") )
+  
+  # stop if no studies in either group
+  if ( sum( d$positive == "Non-affirmative" ) == 0 ) {
+    stop("There are no non-affirmative studies. The plot would look silly.")
+  }
+  
+  if ( sum( d$positive == "Affirmative" ) == 0 ) {
+    stop("There are no affirmative studies. The plot would look silly.")
+  }
+  
+  # pooled fixed-effects estimates
+  est.N = rma.uni(yi = d$yi[ d$positive == "Non-affirmative" ],
+                  vi = d$vi[ d$positive == "Non-affirmative" ],
+                  method="FE")$b
+  
+  est.all = rma.uni(yi = d$yi,
+                    vi = d$vi,
+                    method="FE")$b
+  
+  # negative sei positions them below the horizontal divider line
+  pooled.pts = data.frame( yi = c(est.N, est.all),
+                           sei = c(0,0) )
+  
+  # for a given SE (y-value), return the "just significant" point estimate value (x-value)
+  just_signif_est = function( .sei ) .sei * qnorm(.975)
+  
+  # polygon coordinates for the blue and orange shading
+  # remember ymin is the min SE, etc.
+  # if ( !any( is.na( c(ymin, xmin, ymax, xmax) ) ) ) {
+  #   
+  #   poly.blue=data.frame(yi=c(xmin, just_signif_est(ymin), just_signif_est(ymax), xmin ),
+  #                        sei=c(ymin, ymin, ymax, ymax),
+  #                        positive = rep("Non-affirmative", 4),
+  #                        alpha = 0.3)
+  #   
+  #   poly.orange=data.frame(yi=c(just_signif_est(ymin), xmax, xmax, just_signif_est(ymax)),
+  #                          sei=c(ymin, ymin, ymax, ymax ),
+  #                          positive = rep("Affirmative", 4),
+  #                          alpha = 0.3)
+  # } else {
+  #   # remove objects if they happen to exist
+  #   # because will check for existence during plotting
+  #   suppressWarnings( rm(poly.blue) )
+  #   suppressWarnings( rm(poly.orange) )
+  # }
+  
+  colors = c("blue", "orange")
+  
+  p.funnel = ggplot( data = d, aes( x = d$yi,
+                                    y = d$sei,
+                                    color = d$positive ) )
+  
+  # if ( exists("poly.orange") ) {
+  #   p.funnel = p.funnel + geom_polygon(data=poly.blue, mapping=aes(x=poly.blue$yi, y=poly.blue$sei),
+  #                                      fill = colors[1],
+  #                                      alpha = 0.2,
+  #                                      color = NA)
+  #   
+  #   p.funnel = p.funnel +  geom_polygon(data=poly.orange, mapping=aes(x=poly.orange$yi, y=poly.orange$sei),
+  #                                       fill = colors[2],
+  #                                       alpha = 0.2,
+  #                                       color = NA)
+  # }
+  
+  # TESTING
+  # bm
+  # min.sei = min( d$sei )
+  # max.sei = max( d$sei )
+  # mod = lm( y ~ x,
+  #           data = data.frame( x = c( just_signif_est( min.sei ), just_signif_est( max.sei ) ),
+  #                              y = c(min.sei, max.sei) ) )
+  # 
+  # sl = coef(mod)[2]
+  
+  # because sl * 1 should be 
+  sl = 1/qnorm(.975)
+  int = 0
+  # sanity check: should be exactly 0.05
+  2 * ( 1 - pnorm( abs(1) / 0.5102135 ) )
+  
+  # sl <- ( coords2[2] - coords1[2] ) / ( coords2[1] - coords1[1] )
+  # int <- coords2[2] - (sl*coords2[1])
+  
+  #Build the polygon
+  datPoly <- buildPoly(range( d$yi ), range( d$sei ),
+                       slope=sl,intercept=int,above=FALSE)
+  names(datPoly) = c("yi", "sei")
+  datPoly$positive = "Affirmative"
+  datPoly$alpha = 0.3
+  # bm: kind of works? but doesn't line up with the studies' own coloring
+  
+  if ( plot.pooled == TRUE ) {
+    
+    p.funnel = p.funnel + geom_point(
+      data = pooled.pts,
+      aes( x = pooled.pts$yi, y = pooled.pts$sei ),
+      size = 4,
+      shape = 5,
+      fill = NA,
+      color = c(colors[1], "black")
+    ) +
+      
+      geom_point(
+        data = pooled.pts,
+        aes( x = pooled.pts$yi, y = pooled.pts$sei ),
+        size = 4,
+        shape = 18,
+        color = c(colors[1], "black"),
+        alpha = .3
+      ) +
+      
+      # just for visual separation of pooled ests
+      geom_hline( yintercept = 0 )
+  }
+  
+  p.funnel = p.funnel +
+    
+    # semi-transparent points with solid circles around them
+    geom_point( size = 3, alpha=.3) +
+    geom_point( size = 3, shape = 1) +
+    
+    scale_color_manual(values = colors) +
+    
+    xlab( bquote( hat(theta) ) ) +
+    ylab( bquote( hat(SE) ) ) +
+    
+    theme_classic() +
+    theme(legend.title=element_blank())
+  
+  # add the poly
+  p.funnel = p.funnel +
+    geom_polygon( data = datPoly, mapping=aes(x=datPoly$yi, y=datPoly$sei),
+                  fill=colors[2],alpha=0.2,color=NA)
+  
+  plot(p.funnel)
+  return(p.funnel)
+}
+
+
+
+# for a given SE (y-value), return the "just significant" point estimate value (x-value)
+just_signif_est = function( .sei ) .sei * qnorm(.975)
+
+buildPoly <- function(xr, yr, slope = 1, intercept = 0, above = TRUE){
+  #Assumes ggplot default of expand = c(0.05,0)
+  xrTru <- xr + 0.05*diff(xr)*c(-1,1)
+  yrTru <- yr + 0.05*diff(yr)*c(-1,1)
+  
+  #Find where the line crosses the plot edges
+  yCross <- (yrTru - intercept) / slope
+  xCross <- (slope * xrTru) + intercept
+  
+  #Build polygon by cases
+  if (above & (slope >= 0)){
+    rs <- data.frame(x=-Inf,y=Inf)
+    if (xCross[1] < yrTru[1]){
+      rs <- rbind(rs,c(-Inf,-Inf),c(yCross[1],-Inf))
+    }
+    else{
+      rs <- rbind(rs,c(-Inf,xCross[1]))
+    }
+    if (xCross[2] < yrTru[2]){
+      rs <- rbind(rs,c(Inf,xCross[2]),c(Inf,Inf))
+    }
+    else{
+      rs <- rbind(rs,c(yCross[2],Inf))
+    }
+  }
+  if (!above & (slope >= 0)){
+    rs <- data.frame(x= Inf,y= -Inf)
+    if (xCross[1] > yrTru[1]){
+      rs <- rbind(rs,c(-Inf,-Inf),c(-Inf,xCross[1]))
+    }
+    else{
+      rs <- rbind(rs,c(yCross[1],-Inf))
+    }
+    if (xCross[2] > yrTru[2]){
+      rs <- rbind(rs,c(yCross[2],Inf),c(Inf,Inf))
+    }
+    else{
+      rs <- rbind(rs,c(Inf,xCross[2]))
+    }
+  }
+  if (above & (slope < 0)){
+    rs <- data.frame(x=Inf,y=Inf)
+    if (xCross[1] < yrTru[2]){
+      rs <- rbind(rs,c(-Inf,Inf),c(-Inf,xCross[1]))
+    }
+    else{
+      rs <- rbind(rs,c(yCross[2],Inf))
+    }
+    if (xCross[2] < yrTru[1]){
+      rs <- rbind(rs,c(yCross[1],-Inf),c(Inf,-Inf))
+    }
+    else{
+      rs <- rbind(rs,c(Inf,xCross[2]))
+    }
+  }
+  if (!above & (slope < 0)){
+    rs <- data.frame(x= -Inf,y= -Inf)
+    if (xCross[1] > yrTru[2]){
+      rs <- rbind(rs,c(-Inf,Inf),c(yCross[2],Inf))
+    }
+    else{
+      rs <- rbind(rs,c(-Inf,xCross[1]))
+    }
+    if (xCross[2] > yrTru[1]){
+      rs <- rbind(rs,c(Inf,xCross[2]),c(Inf,-Inf))
+    }
+    else{
+      rs <- rbind(rs,c(yCross[1],-Inf))
+    }
+  }
+  
+  return(rs)
+}
+
+
+
+#Generate some data
+dat <- data.frame(x=runif(10),y=runif(10))
+
+#Select two of the points to define the line
+pts <- dat[sample(1:nrow(dat),size=2,replace=FALSE),]
+
+
+
+min.sei = min( sqrt(d$varlogRR) )
+max.sei = max( sqrt(d$varlogRR) )
+
+#Slope and intercept of line through those points
+mod = lm( y ~ x,
+          data = data.frame( x = c( just_signif_est( min.sei ), just_signif_est( max.sei ) ),
+                             y = c(min.sei, max.sei) ) )
+
+sl = coef(mod)[2]
+int = 0
+
+# sl <- ( coords2[2] - coords1[2] ) / ( coords2[1] - coords1[1] )
+# int <- coords2[2] - (sl*coords2[1])
+
+#Build the polygon
+datPoly <- buildPoly(range( d$logRR ), range( sqrt(d$varlogRR) ),
+                     slope=sl,intercept=int,above=FALSE)
+
+#Make the plot
+p <- ggplot(d, aes(x=logRR,y=sqrt(varlogRR))) +
+  geom_point() +
+  geom_abline(slope=sl,intercept = int) +
+  geom_polygon(data=datPoly,aes(x=x,y=y),alpha=0.2,fill="blue")
+print(p)
+# 
+

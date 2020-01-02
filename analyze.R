@@ -27,18 +27,14 @@ library(MetaUtility)
 library(weightr)
 library(PublicationBias)
 library(tableone)
+library(readxl)
 
 # prepped dataset
 setwd(data.dir)
 d = read.csv("prepped_data.csv")
 d = d %>% filter( !is.na(authoryear) )  # blank rows for visual appeal
-
-# should be none
+# sanity check: should be none
 d$unique[ is.na(d$logRR) & d$use.rr.analysis == 1]
-
-# number of point estimates by analysis
-table(d$use.rr.analysis)
-
 # sanity check
 table(!is.na(d$logRR), d$use.rr.analysis)
 
@@ -55,6 +51,14 @@ d$n.paper = as.numeric( as.character(d$n.paper) )
 # article-level dataset
 d.arts = d[ !duplicated(d$authoryear), ]
 
+# # study characteristics, including the ones that didn't contribute point estimates
+# # only used to calculate the number of hopeless studies
+# d2 = read_xlsx("Extracted qualitative data.xlsx", na = "NR")
+# # remove missing rows
+# d2 = d2 %>% filter(!is.na(`First author last name`))
+# d2$authoryear = paste( d2$`First author last name`,
+#                        as.character(d2$Year),
+#                        sep = " " )
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -111,6 +115,18 @@ update_result_csv( name = paste( "Stats source", t$stats.source, sep = " " ),
                    value = t$perc,
                    print = TRUE )
 
+# number of "hopeless" articles and interventions (included but couldn't get data)
+# ~~~ once d2 spreadsheet is cleaner, try to get this from there
+# for now, just counted the 2 Norris studies and Dowsett
+update_result_csv( name = "Number articles hopeless",
+                   section = 0,
+                   value = 3,
+                   print = TRUE )
+update_result_csv( name = "Number estimates hopeless",
+                   section = 0,
+                   value = 7,
+                   print = TRUE )
+
 # median number of point estimates contributed by each study
 update_result_csv( name = "Perc articles multiple ests",
                    section = 0,
@@ -125,7 +141,7 @@ update_result_csv( name = "ICC",
 
 
 
-################################# TABLE 1 (INDIVIDUAL STUDY CHARACTERISTICS) #################################
+################################# TABLE 2 (INDIVIDUAL STUDY CHARACTERISTICS) #################################
 
 # variables to include in table
 analysis.vars = c(
@@ -146,7 +162,7 @@ analysis.vars = c(
   "y.cat",
   "y.lag.days")
 
-##### Make Table 1 #####
+##### Make Table 2 #####
 # to force use of median
 median.vars = c( "perc.male",
                 "x.min.exposed",
@@ -158,27 +174,184 @@ print(t, nonnormal = median.vars)
 #xtable( print(t, noSpaces = TRUE, printToggle = FALSE, nonnormal = median.vars) )
 
 
-#################################  #################################
+################################# INTERVENTION CHARACTERISTICS #################################
+
+# interventions containing text
+update_result_csv( name = "Perc interventions text",
+                   section = 0,
+                   value = round( 100 * mean( d$x.has.text == 1, na.rm = TRUE ) ),
+                   print = FALSE )
+
+# interventions containing visuals
+update_result_csv( name = "Perc interventions visuals",
+                   section = 0,
+                   value = round( 100 * mean( d$x.has.visuals == 1, na.rm = TRUE ) ),
+                   print = FALSE )
+
+# interventions containing graphic suffering
+update_result_csv( name = "Perc interventions graphic",
+                   section = 0,
+                   value = round( 100 * mean( d$x.suffer == 1, na.rm = TRUE ) ),
+                   print = FALSE )
+
+# interventions purely animal welfare
+update_result_csv( name = "Perc interventions pure",
+                   section = 0,
+                   value = round( 100 * mean( d$x.pure.animals == 1, na.rm = TRUE ) ),
+                   print = FALSE )
+
+# intervention duration
+update_result_csv( name = "Perc interventions short",
+                   section = 0,
+                   value = round( 100 * mean( d$x.long == 0, na.rm = TRUE ), 0 ),
+                   print = FALSE )
+
+# request type
+t = d %>% filter( !is.na(x.pushy) ) %>%
+  group_by(x.pushy) %>%
+  summarise( k = n() ) %>%
+  mutate( perc = round( 100 * k / sum(k) ) )
+
+update_result_csv( name = paste( "Pushy", t$x.pushy, sep = " " ),
+                   section = 0,
+                   value = t$perc,
+                   print = TRUE )
+
+# interventions not personally tailored
+update_result_csv( name = "Perc interventions not tailored",
+                   section = 0,
+                   value = round( 100 * mean( d$x.tailored == 0, na.rm = TRUE ) ),
+                   print = FALSE )
 
 
+################################# OUTCOME CHARACTERISTICS #################################
+
+# outcome category
+t = d %>% filter( !is.na(y.cat) ) %>%
+  group_by(y.cat) %>%
+  summarise( k = n() ) %>%
+  mutate( perc = round( 100 * k / sum(k) ) )
+
+update_result_csv( name = paste( "Y cat", t$y.cat, sep = " " ),
+                   section = 0,
+                   value = t$perc,
+                   print = TRUE )
+
+# outcome proximity
+t = d %>% filter( !is.na(qual.y.prox) ) %>%
+  group_by(qual.y.prox) %>%
+  summarise( k = n() ) %>%
+  mutate( perc = round( 100 * k / sum(k) ) )
+
+update_result_csv( name = paste( "Y prox", t$qual.y.prox, sep = " " ),
+                   section = 0,
+                   value = t$perc,
+                   print = TRUE )
+
+# time lag
+update_result_csv( name = "Perc time lag 0",
+                   section = 0,
+                   value = round( 100 * mean( d$y.lag.days == 0, na.rm = TRUE ), 0 ),
+                   print = FALSE )
+update_result_csv( name = "Median time lag when >0",
+                   section = 0,
+                   value = round( median( d$y.lag.days[ !is.na(d$y.lag.days) & d$y.lag.days > 0 ] ), digits ),
+                   print = TRUE )
+update_result_csv( name = "Max time lag",
+                   section = 0,
+                   value = round( max( d$y.lag.days[ !is.na(d$y.lag.days) & d$y.lag.days > 0 ] ), digits ),
+                   print = TRUE )
+
+# interpretation of outcome
+table( grepl("Reduce", d$interpretation) )
+unique( d$interpretation[grepl("Reduce", d$interpretation)] )
+unique( d$interpretation[!grepl("Reduce", d$interpretation)] )
+
+update_result_csv( name = "Y interpret reduce",
+                   section = 0,
+                   value = round( 100 * mean( grepl("Reduce", d$interpretation), na.rm = TRUE ), 0 ),
+                   print = FALSE )
+update_result_csv( name = "Y interpret absolute",
+                   section = 0,
+                   value = round( 100 * mean( !grepl("Reduce", d$interpretation), na.rm = TRUE ), 0 ),
+                   print = FALSE )
 
 
 ################################# TABLE 2 (RISKS OF BIAS AT ARTICLE LEVEL) #################################
 
+##### Make High-Quality Variable #####
+# how many meet bar of high quality?
+# ~~~ add something about subjective data here
+d = d %>% mutate( hi.qual = grepl("RCT", design) == TRUE & 
+                    #qual.y.prox %in% c("Self-reported", "Actual behavior") &
+                    !is.na(qual.missing) & qual.missing < 10 )   # reducing this to 5 doesn't change number of studies
+
+table(d$hi.qual)
+unique( d$authoryear[ d$hi.qual == TRUE ] )
+
+# compare to my personal list of methodological favorites
+unique( d$authoryear[ d$mm.fave == 1 ] )
+# good! seems to line up well :)
+
+##### Make Table #####
 quality.vars = c( "design", names(d)[ grepl("qual", names(d)) ] )
 
-CreateTableOne(data=d[,quality.vars], includeNA = TRUE)
+median.vars = c("qual.missing")
+
+t = CreateTableOne(data=d[,quality.vars], includeNA = TRUE)
+print(t, nonnormal = median.vars)
 
 
+# percent randomized
 update_result_csv( name = "Perc randomized",
                    section = 0,
-                   value = round( 100 * mean(d$randomized), 0 ),
+                   value = round( 100 * mean(d$randomized, na.rm = TRUE), 0 ),
                    print = FALSE )
+
+# percent with public data
+update_result_csv( name = "Perc public data",
+                   section = 0,
+                   value = round( 100 * mean(d$qual.public.data == "Yes", na.rm = TRUE), 0 ),
+                   print = TRUE )
+
+# percent with public code
+update_result_csv( name = "Perc public code",
+                   section = 0,
+                   value = round( 100 * mean(d$qual.public.code == "Yes", na.rm = TRUE), 0 ),
+                   print = TRUE )
+
+# percent preregistered
+update_result_csv( name = "Perc prereg",
+                   section = 0,
+                   value = round( 100 * mean(d$qual.prereg == "Yes", na.rm = TRUE), 0 ),
+                   print = TRUE )
+
+# median missing data
+update_result_csv( name = "Median missing",
+                   section = 0,
+                   value = round( median(d$qual.missing, na.rm = TRUE), digits ),
+                   print = TRUE )
+update_result_csv( name = "Perc missing NR",
+                   section = 0,
+                   value = round( 100*mean( is.na(d$qual.missing) ), 0 ),
+                   print = FALSE )
+
+# percent using intended or self-reported consumption/purchase
+update_result_csv( name = "Perc self-reported or intended",
+                   section = 0,
+                   value = round( 100 * mean( d$qual.y.prox != "Actual", na.rm = TRUE ), 0 ),
+                   print = FALSE )
+
+
 
 # bm: separate the quality variables into study-level and intervention-level (and maybe separate the tables that was
 #  as well?)
 #  for example, public data/code should be at study level
 
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+#                                 1. MAIN ANALYSES            
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 ################################# 1. OVERALL META-ANALYSIS #################################
 
@@ -207,6 +380,10 @@ update_result_csv( name = "Overall muhat RR",
                    section = 1,
                    value = round( exp(mu), digits ),
                    print = FALSE )
+update_result_csv( name = "Overall muhat RR-1",
+                   section = 1,
+                   value = round( 100 * (exp(mu) - 1), 0 ),
+                   print = FALSE )
 update_result_csv( name = "Overall muhat RR lo",
                    section = 1,
                    value = round( exp(mu.lo), digits ),
@@ -233,37 +410,53 @@ shapiro.test(std)
 # reasonable
 
 
-
 ################################# CALIBRATED ENSEMBLE ESTIMATES #################################
 
-
-# ensemble estimates
+##### Plot the Ensemble Estimates #####
 d$ens = my_ens(yi = d$logRR, 
                sei = sqrt(d$varlogRR))
 
 ggplot( data = d,
             aes(x = exp(d$ens))) +
   
-  
+  # null
   geom_vline(xintercept = 1,
-             color = "gray") +
+             color = "black",
+             lty = 2) +
   
-  geom_density() +
+  geom_density(lwd = 1) +
   
   # pooled point estimate
   geom_vline(xintercept = exp(mu),
              color = "red",
              lty = 2) +
   
-  xlab("Estimated relative risk of low vs. high meat") +
-  ylab("Kernel density estimate of true effects") +
+  xlab("Risk ratio of low vs. high meat") +
+  ylab("Kernel estimate of true effect density") +
   
   scale_x_continuous( limits = c(0.8, 1.8),
-                      breaks = seq(0.8, 1.8, .2) ) +
-  theme_classic()
+                      breaks = seq(0.8, 1.8, .1) ) +
+  
+  theme_classic() +
+  theme( axis.text.y = element_blank(),
+        axis.ticks.y = element_blank() )
+
+
+setwd(results.dir)
+ggsave( "ensemble_density.pdf",
+        width = 8,
+        height = 6 )
+
+
+setwd(overleaf.dir)
+ggsave( "ensemble_density.pdf",
+        width = 8,
+        height = 6 )
 
 
 
+
+##### Studies with Best Ensemble Estimates #####
 # handful of studies with best ensemble estimates
 ( best.ens = d$unique[ order(d$ens, decreasing = TRUE) ][1:8] )
 
@@ -396,8 +589,6 @@ ggsave( "forest.pdf",
 
 ################################# NPPHAT :D #################################
 
-# ~~~ bm: shorted x-axis on plot to match length of q vec
-
 npphat.from.scratch = FALSE 
 
 
@@ -449,6 +640,7 @@ if (npphat.from.scratch == TRUE) {
   write.csv(res, "npphat_results.csv")
   
 } else {
+  setwd(results.dir)
   res = read.csv("npphat_results.csv")
 }
 
@@ -615,24 +807,75 @@ update_result_csv( name = "Phat below 1 hi",
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-#                              MODERATORS AND STUDY QUALITY            
+#                              2. SENSITIVITY ANALYSES            
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 
-################################# STUDY CHARACTERISTICS AND QUALITY TABLE #################################
+################################# PUBLICATION BIAS ################################# 
+
+# ~~~ also do these analyses excluding the 2 extreme ones (non.extreme.logRR)
+# to this end, put this script in a loop and make a nice table
+
+##### Significance Funnel ######
+library(PublicationBias)
+significance_funnel2(yi = d$logRR,
+                    vi = d$varlogRR)
+
+# affirmative vs. non-affirmative
+d$pval = 2 * ( 1 - pnorm( abs(d$logRR) / sqrt(d$varlogRR) ) )
+d$affirm = d$pval < 0.05 & d$logRR > 0
+table(d$affirm)
+
+# meta-analyze only the nonaffirmatives
+# 2-sided pval
+( meta.worst = robu( yi ~ 1, 
+                     data = d[ d$affirm == FALSE, ], 
+                     studynum = authoryear,
+                     var.eff.size = varlogRR,
+                     modelweights = "HIER",
+                     small = TRUE) )
+# mu = meta.rob$b.r
+# t2 = meta.rob$mod_info$tau.sq
+# mu.lo = meta.rob$reg_table$CI.L
+# mu.hi = meta.rob$reg_table$CI.U
+# mu.se = meta.rob$reg_table$SE
+
+# s-values to reduce to null
+( res = svalue( yi = d$logRR,
+                vi = d$varlogRR,
+                q = log(1), 
+                clustervar = d$authoryear,
+                model = "robust" ) )
 
 
-# how many meet bar of high quality?
-d = d %>% mutate( hi.qual = grepl("RCT", design) == TRUE & 
-                    #qual.y.prox %in% c("Self-reported", "Actual behavior") &
-                      !is.na(qual.missing) & qual.missing < 10 )   # reducing this to 5 doesn't change number of studies
 
-table(d$hi.qual)
-unique( d$authoryear[ d$hi.qual == TRUE ] )
 
-# compare to my personal list of methodological favorites
-unique( d$authoryear[ d$mm.fave == 1 ] )
-# good! seems to line up well :)
+# s-values to reduce effect size to RR=1.1
+( res = svalue( yi = d$logRR,
+                vi = d$varlogRR,
+                q = log(1.1), 
+                clustervar = d$authoryear,
+                model = "robust" ) )
+
+
+
+
+##### Selection Model #####
+# be careful about inference
+# ~~ check ICC within studies
+
+library(weightr)
+( m1 = weightfunct( effect = d$logRR,
+                    v = d$varlogRR,
+                    steps = c(0.025, 1),
+                    table = TRUE
+) )
+# actually makes the estimate larger
+
+# ~~~ maybe look for a Bayesian version?
+
+
+
 
 
 ################################# RUN ALL MODERATOR AND SUBSET ANALYSES #################################
@@ -851,77 +1094,6 @@ ggplot( data = dp, aes( x = x.min.exposed,
 # mu.hi = meta.rob$reg_table$CI.U
 # mu.se = meta.rob$reg_table$SE
 # mu.pval = meta.rob$reg_table$prob
-
-
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-#                              OTHER META-ANALYSIS MEASURES            
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-
-
-
-################################# PUBLICATION BIAS ################################# 
-
-# ~~~ also do these analyses excluding the 2 extreme ones (non.extreme.logRR)
-# to this end, put this script in a loop and make a nice table
-
-##### Significance Funnel ######
-library(PublicationBias)
-significance_funnel(yi = d$logRR,
-                    vi = d$varlogRR)
-
-# affirmative vs. non-affirmative
-d$pval = 2 * ( 1 - pnorm( abs(d$logRR) / sqrt(d$varlogRR) ) )
-d$affirm = d$pval < 0.05 & d$logRR > 0
-table(d$affirm)
-
-# meta-analyze only the nonaffirmatives
-# 2-sided pval
-( meta.worst = robu( yi ~ 1, 
-                     data = d[ d$affirm == FALSE, ], 
-                     studynum = authoryear,
-                     var.eff.size = varlogRR,
-                     modelweights = "HIER",
-                     small = TRUE) )
-# mu = meta.rob$b.r
-# t2 = meta.rob$mod_info$tau.sq
-# mu.lo = meta.rob$reg_table$CI.L
-# mu.hi = meta.rob$reg_table$CI.U
-# mu.se = meta.rob$reg_table$SE
-
-# s-values to reduce to null
-( res = svalue( yi = d$logRR,
-              vi = d$varlogRR,
-              q = log(1), 
-              clustervar = d$authoryear,
-              model = "robust" ) )
-
-
-
-
-# s-values to reduce effect size to RR=1.1
-( res = svalue( yi = d$logRR,
-              vi = d$varlogRR,
-              q = log(1.1), 
-              clustervar = d$authoryear,
-              model = "robust" ) )
-
-
-
-
-##### Selection Model #####
-# be careful about inference
-# ~~ check ICC within studies
-
-library(weightr)
-( m1 = weightfunct( effect = d$logRR,
-                    v = d$varlogRR,
-                    steps = c(0.025, 1),
-                    table = TRUE
-) )
-# actually makes the estimate larger
-
-# ~~~ maybe look for a Bayesian version?
 
 
 
