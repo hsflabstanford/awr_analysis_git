@@ -6,12 +6,25 @@
 
 ################################# PREP ################################# 
 
+# remove existing results files
+start.res.from.scratch = FALSE
+
+if ( start.res.from.scratch == TRUE ) {
+  setwd(results.dir)
+  system("rm stats_for_paper.csv")
+  setwd(overleaf.dir)
+  system("rm stats_for_paper.csv")
+}
+
+
+
 data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Data extraction"
 code.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Analysis/awr_analysis_git"
 results.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Analysis/Results from R"
 overleaf.dir = "~/Dropbox/Apps/Overleaf/AWR (animal welfare interventions review)/R_objects"
 
 setwd(code.dir); source("helper_analysis.R")
+
 
 # for formatting stats
 digits = 2
@@ -145,22 +158,21 @@ update_result_csv( name = "ICC",
 
 # variables to include in table
 analysis.vars = c(
-  #"design",
-  #"published",
-  #"n.paper",
-  #"effect.measure",
+  "country",
   "perc.male",
-  "stats.source",
+  
   "x.has.text",
   "x.has.visuals",
   "x.suffer",
   "x.pure.animals",
   "x.min.exposed",
-  #"x.long",
   "x.tailored",
   "x.pushy",
+  
   "y.cat",
-  "y.lag.days")
+  "y.lag.days",
+  
+  "stats.source")
 
 ##### Make Table 2 #####
 # to force use of median
@@ -170,8 +182,23 @@ median.vars = c( "perc.male",
 
 t = CreateTableOne(data=d[,analysis.vars],
                      includeNA = TRUE )
-print(t, nonnormal = median.vars)
-#xtable( print(t, noSpaces = TRUE, printToggle = FALSE, nonnormal = median.vars) )
+t = print(t, nonnormal = median.vars)
+xtable( print(t, noSpaces = TRUE, printToggle = FALSE, nonnormal = median.vars) )
+
+setwd(results.dir)
+setwd("Tables to prettify")
+write.csv(print(t), "study_char_table.csv")
+
+
+################################# SUBJECT CHARACTERISTICS #################################
+
+# interventions containing text
+update_result_csv( name = "Median perc male",
+                   section = 0,
+                   value = round( median(d$perc.male, na.rm=TRUE), 0 ),
+                   print = FALSE )
+
+
 
 
 ################################# INTERVENTION CHARACTERISTICS #################################
@@ -281,16 +308,19 @@ update_result_csv( name = "Y interpret absolute",
 
 ##### Make High-Quality Variable #####
 # how many meet bar of high quality?
-# ~~~ add something about subjective data here
 d = d %>% mutate( hi.qual = grepl("RCT", design) == TRUE & 
                     #qual.y.prox %in% c("Self-reported", "Actual behavior") &
-                    !is.na(qual.missing) & qual.missing < 10 )   # reducing this to 5 doesn't change number of studies
+                    qual.exch %in% c("a.Low", "b.Medium") &
+                    qual.sdb %in% c("a.Low", "b.Medium") &  # this is the killer
+                    qual.gen %in% c("a.Low", "b.Medium") &
+                    !is.na(qual.missing) & qual.missing < 15 )   # reducing this to 5 doesn't change number of studies
 
 table(d$hi.qual)
 unique( d$authoryear[ d$hi.qual == TRUE ] )
+length( unique( d$authoryear[ d$hi.qual == TRUE ] ) )
 
 # compare to my personal list of methodological favorites
-unique( d$authoryear[ d$mm.fave == 1 ] )
+#unique( d$authoryear[ d$mm.fave == 1 ] )
 # good! seems to line up well :)
 
 ##### Make Table #####
@@ -298,8 +328,15 @@ quality.vars = c( "design", names(d)[ grepl("qual", names(d)) ] )
 
 median.vars = c("qual.missing")
 
+setwd(results.dir)
 t = CreateTableOne(data=d[,quality.vars], includeNA = TRUE)
-print(t, nonnormal = median.vars)
+t = print(t, nonnormal = median.vars)
+
+setwd(results.dir)
+setwd("Tables to prettify")
+write.csv(print(t), "study_quality_table.csv")
+
+
 
 
 # percent randomized
@@ -342,6 +379,30 @@ update_result_csv( name = "Perc self-reported or intended",
                    value = round( 100 * mean( d$qual.y.prox != "Actual", na.rm = TRUE ), 0 ),
                    print = FALSE )
 
+# percent strong or medium on each subjective variable
+update_result_csv( name = "Perc qual.exch okay",
+                   section = 0,
+                   value = round( 100 * mean(d$qual.exch %in% c("a.Low", "b.Medium"), na.rm = TRUE), 0 ),
+                   print = FALSE )
+update_result_csv( name = "Perc qual.sdb okay",
+                   section = 0,
+                   value = round( 100 * mean(d$qual.sdb %in% c("a.Low", "b.Medium"), na.rm = TRUE), 0 ),
+                   print = FALSE )
+update_result_csv( name = "Perc qual.gen okay",
+                   section = 0,
+                   value = round( 100 * mean(d$qual.gen %in% c("a.Low", "b.Medium"), na.rm = TRUE), 0 ),
+                   print = TRUE )
+
+# percent high-quality
+update_result_csv( name = "Perc ests hi.qual",
+                   section = 0,
+                   value = round( 100 * mean(d$hi.qual, na.rm = TRUE), 0 ),
+                   print = TRUE )
+
+update_result_csv( name = "Unique articles hi.qual",
+                   section = 0,
+                   value = length( unique( d$authoryear[ d$hi.qual == 1 ] ) ),
+                   print = TRUE )
 
 
 # bm: separate the quality variables into study-level and intervention-level (and maybe separate the tables that was
@@ -644,7 +705,8 @@ if (npphat.from.scratch == TRUE) {
   res = read.csv("npphat_results.csv")
 }
 
-
+# remove last row because CI is NA
+res = res[ -nrow(res), ]
 
 ##### Make Plot #####
 library(ggplot2)
@@ -657,17 +719,18 @@ ggplot( data = res,
   # pooled point estimate
   geom_vline( xintercept = exp(mu),
               lty = 2,
-              color = "black" ) +
+              color = "red" ) +
   
   scale_y_continuous(  breaks = seq(0, 100, 10) ) +
-  scale_x_continuous(  breaks = seq(1, 2, .1) ) +
+  # stop x-axis early because last CI is NA
+  scale_x_continuous(  breaks = seq(1, exp(.56), .1) ) +
   
   geom_line(lwd=1.2) +
   
   xlab("Threshold (RR scale)") +
-  ylab( paste( "Estimated percent of effects above threshold" ) ) 
+  ylab( paste( "Estimated percent of effects above threshold" ) ) +
   
-  #geom_ribbon( aes(ymin=res$lo, ymax=res$hi), alpha=0.15, fill = "black" ) 
+  geom_ribbon( aes(ymin=res$lo, ymax=res$hi), alpha=0.15, fill = "black" ) 
 
 # # parametric CI
 # geom_ribbon( aes(ymin=res$CI.lo.param, ymax=res$CI.hi.param), alpha=0.15, fill = "blue" )   
@@ -816,11 +879,74 @@ update_result_csv( name = "Phat below 1 hi",
 # ~~~ also do these analyses excluding the 2 extreme ones (non.extreme.logRR)
 # to this end, put this script in a loop and make a nice table
 
-##### Significance Funnel ######
-library(PublicationBias)
-significance_funnel2(yi = d$logRR,
-                    vi = d$varlogRR)
 
+
+##### Hedges Selection Model #####
+# be careful about inference due to correlated point estimates
+# can't fit model with 3 cutoffs because there are no significant negative studies
+library(weightr)
+( m1 = weightfunct( effect = d$logRR,
+                    v = d$varlogRR,
+                    steps = c(0.025, 1),
+                    table = TRUE ) )
+# actually makes the estimate larger
+H = m1[[2]]$hessian
+ses = sqrt( diag( solve(H) ) )
+
+update_result_csv( name = "weightr mu",
+                   section = 2,
+                   value = round( exp(m1[[2]]$par[2]), digits ),
+                   print = FALSE )
+update_result_csv( name = "weightr mu lo",
+                   section = 2,
+                   value = round( exp(m1[[2]]$par[2] - qnorm(.975) * ses[2]), digits ),
+                   print = FALSE )
+update_result_csv( name = "weightr mu hi",
+                   section = 2,
+                   value = round( exp(m1[[2]]$par[2] + qnorm(.975) * ses[2]), digits ),
+                   print = FALSE )
+update_result_csv( name = "weightr mu pval",
+                   section = 2,
+                   value = format_stat( 2 * ( 1 - pnorm( abs(m1[[2]]$par[2]) / ses[2] ) ) ),
+                   print = FALSE )
+
+
+##### S-values ######
+# s-values to reduce to null
+( res = svalue( yi = d$logRR,
+                vi = d$varlogRR,
+                q = log(1), 
+                clustervar = d$authoryear,
+                model = "robust" ) )
+# N.P. for both point estimate and CI
+update_result_csv( name = "sval est to 1",
+                   section = 2,
+                   value = res$sval.est,
+                   print = FALSE )
+update_result_csv( name = "sval CI to 1",
+                   section = 2,
+                   value = res$sval.ci,
+                   print = FALSE )
+
+
+# s-values to reduce effect size to RR=1.1
+( res = svalue( yi = d$logRR,
+                vi = d$varlogRR,
+                q = log(1.1), 
+                clustervar = d$authoryear,
+                model = "robust" ) )
+# N.P. for estimate
+update_result_csv( name = "sval est to 1.1",
+                   section = 2,
+                   value = res$sval.est,
+                   print = FALSE )
+update_result_csv( name = "sval CI to 1.1",
+                   section = 2,
+                   value = round( res$sval.ci, 2 ),
+                   print = FALSE )
+
+
+##### Worst-Case Meta-Analysis ######
 # affirmative vs. non-affirmative
 d$pval = 2 * ( 1 - pnorm( abs(d$logRR) / sqrt(d$varlogRR) ) )
 d$affirm = d$pval < 0.05 & d$logRR > 0
@@ -834,49 +960,61 @@ table(d$affirm)
                      var.eff.size = varlogRR,
                      modelweights = "HIER",
                      small = TRUE) )
-# mu = meta.rob$b.r
-# t2 = meta.rob$mod_info$tau.sq
-# mu.lo = meta.rob$reg_table$CI.L
-# mu.hi = meta.rob$reg_table$CI.U
-# mu.se = meta.rob$reg_table$SE
+mu.worst = meta.worst$b.r
+t2.worst = meta.worst$mod_info$tau.sq
+mu.lo.worst = meta.worst$reg_table$CI.L
+mu.hi.worst = meta.worst$reg_table$CI.U
+mu.se.worst = meta.worst$reg_table$SE
+pval.worst = meta.worst$reg_table$prob
 
-# s-values to reduce to null
-( res = svalue( yi = d$logRR,
-                vi = d$varlogRR,
-                q = log(1), 
-                clustervar = d$authoryear,
-                model = "robust" ) )
-
-
-
-
-# s-values to reduce effect size to RR=1.1
-( res = svalue( yi = d$logRR,
-                vi = d$varlogRR,
-                q = log(1.1), 
-                clustervar = d$authoryear,
-                model = "robust" ) )
-
-
-
-
-##### Selection Model #####
-# be careful about inference
-# ~~ check ICC within studies
-
-library(weightr)
-( m1 = weightfunct( effect = d$logRR,
-                    v = d$varlogRR,
-                    steps = c(0.025, 1),
-                    table = TRUE
-) )
-# actually makes the estimate larger
-
-# ~~~ maybe look for a Bayesian version?
+update_result_csv( name = "k affirm",
+                   section = 2,
+                   value = sum(d$affirm),
+                   print = TRUE )
+update_result_csv( name = "k nonaffirm",
+                   section = 2,
+                   value = sum(d$affirm == 0),
+                   print = TRUE )
+update_result_csv( name = "Worst mu",
+                   section = 2,
+                   value = round( exp(mu.worst), digits),
+                   print = FALSE )
+update_result_csv( name = "Worst mu lo",
+                   section = 2,
+                   value = round( exp(mu.lo.worst), digits),
+                   print = FALSE )
+update_result_csv( name = "Worst mu hi",
+                   section = 2,
+                   value = round( exp(mu.hi.worst), digits),
+                   print = FALSE )
+update_result_csv( name = "Worst mu pval",
+                   section = 2,
+                   value = round(pval.worst, 3),
+                   print = TRUE )
 
 
+##### Significance Funnel ######
+significance_funnel2(yi = d$logRR,
+                     vi = d$varlogRR,
+                     est.N = mu.worst,
+                    est.all = mu )
+
+setwd(results.dir)
+ggsave( "funnel.pdf",
+        width = 8,
+        height = 6 )
+
+setwd(overleaf.dir)
+ggsave( "funnel.pdf",
+        width = 8,
+        height = 6 )
 
 
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+#                              3. SUBSET ANALYSES            
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 ################################# RUN ALL MODERATOR AND SUBSET ANALYSES #################################
 
@@ -899,7 +1037,6 @@ d$non.extreme.logRR = d$logRR < 1.5
 
 ##### Overall and Subset Analyses #####
 
-# bm
 
 subsets = list( d,
                 d %>% filter( !is.na(borderline) & borderline == 0 ),
@@ -930,18 +1067,52 @@ for (i in 1:length(subsets)) {
                     n.tests = n.tests)
 }
 
+
+
+
+
+# simplify and prettify
+resE = resE %>% select( Meta, k, Est, Pval, Tau, `Percent above 1`, `Percent above 1.1`, `Percent above 1.2`)
+
 # save results
+setwd(results.dir)
+setwd("Tables to prettify")
 write.csv(resE, "subsets_table.csv", row.names = FALSE)
 
 
+# note: for some subsets, tau = 0, hence 0 estimate for certain Phats
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+#                              4. MODERATOR ANALYSES            
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+
+##### Correlation Among Numeric Moderators ####
+vars = c(
+  "x.has.text",
+  "x.has.visuals",
+  "x.suffer",
+  "x.pushy",
+  "x.long",
+  "y.long.lag",
+  "perc.male.10"
+)
+cor.mat = cor(d[,vars], use = "pairwise.complete.obs")
+cor.mat = round( cor.mat, 2 )
+
+setwd(results.dir)
+setwd("Tables to prettify")
+write.csv(cor.mat, "moderator_cormat.csv", row.names = FALSE)
+
 ##### Moderators in One Big Model #####
 if( exists("resE") ) rm(resE)
+
+# ~~~ maybe add country (U.S. vs. other) to this?
 moderators = c(
-              "published",
+              #"published",
                "x.has.text",
                "x.has.visuals",
                "x.suffer",
-               "x.makes.request",
+               "x.pushy",
                "x.long",
                "y.long.lag",
                "qual.y.prox2",
@@ -963,86 +1134,99 @@ t2 = meta$mod_info$tau.sq
 mu.lo = meta$reg_table$CI.L
 mu.hi = meta$reg_table$CI.U
 mu.se = meta$reg_table$SE
-mu.pval = meta$reg_table$prob
+pval = meta$reg_table$prob
+V = meta$VR.r  # variance-covariance matrix
 
-# sanity check
-( meta = robu( logRR ~ x.makes.request, 
-               data = d, 
-               studynum = as.factor(authoryear),
-               var.eff.size = varlogRR,
-               modelweights = "HIER",
-               small = TRUE) )
-
-# look at correlation of moderators that are numeric
-vars = c(
-  "published",
-  "x.has.text",
-  "x.has.visuals",
-  "x.suffer",
-  "x.makes.request",
-  "x.long",
-  "y.long.lag",
-  "perc.male.10"
-)
-cor.mat = cor(d[,vars], use = "pairwise.complete.obs")
-# bm
-
-# which variables are most correlated?
+# report tau in this model
+update_result_csv( name = "Meta-regression tau",
+                   section = 4,
+                   value = round( sqrt( meta$mod_info$tau.sq ), 2 ),
+                   print = TRUE )
 
 
+# estimates for text
+ests = round( exp(est), 2 )
+pvals2 = format_stat(pval)
+pvals2[ pval < 0.01 ] = round(pval[ pval < 0.01 ], 3)
+update_result_csv( name = paste( "Meta-regression est", meta$labels ),
+                   section = 4,
+                   value = ests,
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression lo", meta$labels ),
+                   section = 4,
+                   value = format_stat( exp(mu.lo) ),
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression hi", meta$labels ),
+                   section = 4,
+                   value = format_stat( exp(mu.hi) ),
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression pval", meta$labels ),
+                   section = 4,
+                   value = pvals2,
+                   print = TRUE )
 
 
-##### Moderators in Separate Models #####
-if( exists("resE") ) rm(resE)
-moderators = c("published",
-               "x.has.text",
-               "x.has.visuals",
-               "x.suffer",
-               "x.pushy",
-               "x.makes.request",
-               "x.long",
-               "y.long.lag",
-               "qual.y.prox2",
-               "perc.male.10")
+##### Meta-Regression Table #####
+CIs = format_CI( exp( mu.lo ),
+                 exp( mu.hi ) )
+temp = data.frame( Moderator = meta$labels, 
+                   EstCI = paste( ests, CIs, sep = " " ),
+                   Pval = pvals2 )
 
-moderator.labels = c("Published",
-                     "Intervention has text",
-                     "Intervention has visuals",
-                     "Intervention depicts suffering",
-                     "Intervention pushiness",
-                     "Intervention makes any request",
-                     "Intervention took at least 5 min",
-                     "Outcome measured >1 week after intervention",
-                     "Outcome proximity",
-                     "10 percentage pt. increase in males")
-
-# indicator for whether moderator is continuous 
-mod.continuous = c( rep(0,9), 1 )
-
-# Bonferroni count
-n.tests = length(moderators)
-
-# bm
-for (i in 1:length(moderators)) {
-  analyze_one_meta( dat = d,
-                    meta.name = moderator.labels[i],
-                    yi.name = "logRR",
-                    vi.name = "varlogRR",
-                    digits = digits,
-                    moderator = moderators[i],
-                    mod.continuous = mod.continuous[i],
-                    boot.reps = boot.reps, 
-                    ql = ql,
-                    take.exp = TRUE,
-                    n.tests = n.tests)
-}
+# save results
+setwd(results.dir)
+setwd("Tables to prettify")
+write.csv(temp, "meta_regression_table.csv", row.names = FALSE)
 
 
-# remove the baseline levels for binary moderators
-View(resE %>% filter(Level != 0 & Level != FALSE))
-# note that the moderators' estimates and p-values are vs. reference
+# ##### Moderator Forest Plot Hell Yeah #####
+# # these are the least-squares means for each group, NOT the coefficient estimates
+# # calculate estimated RR for each characteristic using the intercept
+# int = est[1]
+# bhat = est[2: length(est)]
+# log.RRs = int + bhat
+# 
+# # SE of RR itself rather than the model coefficient
+# # ~~~ note that this does not use the small-sample correction but rather 
+# #  asymptotic normality
+# # ~~~ email Fisher and Tipton about this
+# n.mods = length(est) - 1
+# se.RR = vapply( X = 1:n.mods, 
+#                 FUN = function(i) sqrt( V[1,1] + V[(i+1),(i+1)] + 2*V[1,(i+1)] ),
+#                 FUN.VALUE = -99 )
+# # i+1 because V's first entry is for the intercept itself
+# 
+# # sanity check for second moderator
+# sqrt( 0.0330520616 + 0.0064163250 + 2*-0.0080392687 )
+# 
+# # make plotting dataframe
+# dp = data.frame( mod = meta$labels[-1],
+#                  RR = exp(log.RRs),
+#                  lo = exp( log.RRs - qnorm(.975) * se.RR ),
+#                  hi = exp( log.RRs + qnorm(.975) * se.RR ),
+#                  pval = pval[-1] )
+# 
+# ggplot( data = dp,
+#         aes( x = RR,
+#              y = mod) ) +
+#   # pooled point estimate
+#   geom_vline( xintercept = exp(mu),
+#               lty = 2, 
+#               color = "red" ) +
+#   
+#   # null
+#   geom_vline( xintercept = 1,
+#               lty = 2, 
+#               color = "black" ) +
+#   
+#   geom_point(size = 2) +
+#   geom_errorbarh( aes(xmin = lo, 
+#                       xmax = hi,
+#                       height = 0.001 ) ) +
+#   scale_x_continuous( breaks = seq(0.5, 3.5, .1)) +
+#   theme_bw()
+  
 
-write.csv(resE %>% filter(Level != 0 & Level != FALSE), "moderators_analyses.csv", row.names = FALSE)
 
 
 ################################# CONTINUOUS MODERATOR PLOTS #################################
@@ -1058,6 +1242,8 @@ ggplot( data = dp, aes( x = y.lag.days,
   xlab("Days elapsed between intervention and outcome") +
   ylab("True effect estimate (RR)") +
   geom_hline(yintercept = 1, lty = 2) +
+  
+  # point of dichotomization
   geom_vline(xintercept = 7, lty = 2, color = "red") +
   scale_x_continuous(limits = c(0,100),
                      breaks = seq(0,100,10)) +
@@ -1075,7 +1261,9 @@ ggplot( data = dp, aes( x = x.min.exposed,
   geom_smooth() +
   xlab("Total time exposed to intervention (min)") +
   ylab("True effect estimate (RR)") +
-  geom_hline(yintercept = 1, lty = 2) +
+  
+  # point of dichotomization
+  geom_vline(xintercept = 5, lty = 2) +
   scale_shape_manual(values = 1:50) +
   # scale_x_continuous(limits = c(0,110),
   #                    breaks = seq(0,95,5)) +

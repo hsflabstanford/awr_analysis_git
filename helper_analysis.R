@@ -269,9 +269,9 @@ significance_funnel2 = function( yi,
                                 ymin = min( sqrt(vi) ),
                                 xmax = max(yi),
                                 ymax = max( sqrt(vi) ),
+                                est.N = NA,
+                                est.all = NA,
                                 plot.pooled = TRUE ) {
-  
-  browser()
   
   d = data.frame(yi, vi)
   d$sei = sqrt(vi)
@@ -283,6 +283,10 @@ significance_funnel2 = function( yi,
   d$positive = rep(NA, nrow(d))
   d$positive[ (d$yi > 0) & (d$pval < 0.05) ] = "Affirmative"
   d$positive[ (d$yi < 0) | (d$pval >= 0.05) ] = "Non-affirmative"
+  
+  # sanity check
+  d$positive2 = d$yi/sqrt(d$vi)>qnorm(.975)
+  table(d$positive, d$positive2)
   
   # reorder levels for plotting joy
   d$positive = factor( d$positive, c("Non-affirmative", "Affirmative") )
@@ -297,13 +301,17 @@ significance_funnel2 = function( yi,
   }
   
   # pooled fixed-effects estimates
-  est.N = rma.uni(yi = d$yi[ d$positive == "Non-affirmative" ],
-                  vi = d$vi[ d$positive == "Non-affirmative" ],
-                  method="FE")$b
-  
-  est.all = rma.uni(yi = d$yi,
-                    vi = d$vi,
+  # ~~ NEW: use FE model unless they are passed as arguments
+  if ( is.na(est.N) & is.na(est.all) ) {
+    est.N = rma.uni(yi = d$yi[ d$positive == "Non-affirmative" ],
+                    vi = d$vi[ d$positive == "Non-affirmative" ],
                     method="FE")$b
+    
+    est.all = rma.uni(yi = d$yi,
+                      vi = d$vi,
+                      method="FE")$b
+  }
+
   
   # negative sei positions them below the horizontal divider line
   pooled.pts = data.frame( yi = c(est.N, est.all),
@@ -377,6 +385,14 @@ significance_funnel2 = function( yi,
   datPoly$alpha = 0.3
   # bm: kind of works? but doesn't line up with the studies' own coloring
   
+  # build the second polygon
+  # exactly the same but with above=FALSE
+  datPoly2 <- buildPoly(range( d$yi ), range( d$sei ),
+                       slope=sl,intercept=int,above=TRUE)
+  names(datPoly2) = c("yi", "sei")
+  datPoly2$positive = "Affirmative"
+  datPoly2$alpha = 0.3
+  
   if ( plot.pooled == TRUE ) {
     
     p.funnel = p.funnel + geom_point(
@@ -409,16 +425,35 @@ significance_funnel2 = function( yi,
     
     scale_color_manual(values = colors) +
     
-    xlab( bquote( hat(theta) ) ) +
-    ylab( bquote( hat(SE) ) ) +
+    xlab("Estimated log-risk ratio") +
+    ylab("Estimated standard error") +
+    
+    # ~~ specific to AWR
+    scale_y_continuous( limits = c(0, 1.5),
+                        breaks = seq(0, 1.5, .25) ) +
+    scale_x_continuous( limits = c(-0.5, 2),
+                        breaks = seq(-0.5, 2, .25) ) +
+    
+    # xlab( bquote( hat(theta) ) ) +
+    # ylab( bquote( hat(SE) ) ) +
     
     theme_classic() +
     theme(legend.title=element_blank())
   
   # add the poly
+  
   p.funnel = p.funnel +
-    geom_polygon( data = datPoly, mapping=aes(x=datPoly$yi, y=datPoly$sei),
-                  fill=colors[2],alpha=0.2,color=NA)
+    geom_abline(slope=sl,intercept = int, color = "gray") +
+    annotate(geom = "text", x = 1.25, y = .57, label = "Z = 1.96", color = "gray",
+             angle = 38) 
+  
+   
+  
+  
+    # geom_polygon( data = datPoly, mapping=aes(x=datPoly$yi, y=datPoly$sei),
+    #               fill=colors[2],alpha=0.2,color=NA) +
+    # geom_polygon( data = datPoly2, mapping=aes(x=datPoly2$yi, y=datPoly2$sei),
+    #               fill=colors[1],alpha=0.2,color=NA)
   
   plot(p.funnel)
   return(p.funnel)
