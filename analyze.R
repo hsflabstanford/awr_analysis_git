@@ -45,19 +45,19 @@ library(readxl)
 # prepped dataset
 setwd(data.dir)
 d = read.csv("prepped_data.csv")
-d = d %>% filter( !is.na(authoryear) )  # blank rows for visual appeal
+d = d %>% filter( !is.na(authoryear) )  # has blank rows for visual appeal
 # sanity check: should be none
 d$unique[ is.na(d$logRR) & d$use.rr.analysis == 1]
 # sanity check
 table(!is.na(d$logRR), d$use.rr.analysis)
 
-# make different datasets for different analyses
-d.veg = d[ d$use.veg.analysis == 1,]
-d.grams = d[ d$use.grams.analysis == 1,]
+# dataset that includes the high-bias challenges
+d.chal = d[ d$use.rr.analysis == 1, ]
+d.chal = droplevels(d.chal)
 
 # main dataset without high-bias challenges
 # ~~~ after coding of exclude.main is complete, remove the is.na call
-d = d[ d$use.rr.analysis == 1 & !is.na(d$exclude.main) & d$exclude.main == 0,]  
+d = d[ d$use.rr.analysis == 1 & !is.na(d$exclude.main) & d$exclude.main == 0, ]  
 d = droplevels(d)
 d$n.paper = as.numeric( as.character(d$n.paper) )
 
@@ -336,6 +336,14 @@ setwd(results.dir)
 setwd("Tables to prettify")
 write.csv(print(t), "study_quality_table.csv")
 
+# stratified by published vs. unpublished
+# bm
+d$published2 = as.character(d$published)
+t = CreateTableOne(data=d[, c(quality.vars, "published2")], strata = "published2", includeNA = TRUE)
+t = print(t, nonnormal = median.vars)
+setwd(results.dir)
+setwd("Tables to prettify")
+write.csv(print(t), "study_quality_table_by_published.csv")
 
 
 
@@ -403,11 +411,6 @@ update_result_csv( name = "Unique articles hi.qual",
                    section = 0,
                    value = length( unique( d$authoryear[ d$hi.qual == 1 ] ) ),
                    print = TRUE )
-
-
-# bm: separate the quality variables into study-level and intervention-level (and maybe separate the tables that was
-#  as well?)
-#  for example, public data/code should be at study level
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -636,6 +639,8 @@ base = ggplot( data = dp, aes( x = exp(logRR),
 
 base
 
+# ~~~ why is pooled at the top again??
+
 setwd(results.dir)
 ggsave( "forest.pdf",
         width = 15,
@@ -650,7 +655,7 @@ ggsave( "forest.pdf",
 
 ################################# NPPHAT :D #################################
 
-npphat.from.scratch = FALSE 
+npphat.from.scratch = TRUE 
 
 
 if (npphat.from.scratch == TRUE) {
@@ -732,8 +737,6 @@ ggplot( data = res,
   
   geom_ribbon( aes(ymin=res$lo, ymax=res$hi), alpha=0.15, fill = "black" ) 
 
-# # parametric CI
-# geom_ribbon( aes(ymin=res$CI.lo.param, ymax=res$CI.hi.param), alpha=0.15, fill = "blue" )   
 
 # 8 x 6 works well
 
@@ -854,19 +857,6 @@ update_result_csv( name = "Phat below 1 hi",
                    value = round( 100*Phat.below$hi, 0 ),
                    print = TRUE )
 
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-#                                SECONDARY EFFECT SIZE CODINGS          
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-
-# my_robu( dat = d.veg,
-#          # yi.name = "yi",
-#          # vi.name = "vi",
-#          take.exp = TRUE )
-# 
-# 
-# my_robu( dat = d.grams,
-#          take.exp = FALSE )
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -1016,7 +1006,7 @@ ggsave( "funnel.pdf",
 #                              3. SUBSET ANALYSES            
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
-################################# RUN ALL MODERATOR AND SUBSET ANALYSES #################################
+################################# RUN ALL SUBSET ANALYSES #################################
 
 if( exists("resE") ) rm(resE)
 
@@ -1032,28 +1022,32 @@ digits = 2
 
 
 # two studies have really huge logRRs, as can be seen in significance funnel
-d$non.extreme.logRR = d$logRR < 1.5
+d$non.extreme.logRR = exp(d$logRR) < 3
+table(d$non.extreme.logRR)
 
 
 ##### Overall and Subset Analyses #####
 
-
 subsets = list( d,
                 d %>% filter( !is.na(borderline) & borderline == 0 ),
                 d %>% filter( !is.na(x.pure.animals) & x.pure.animals == 1 ),
-                d %>% filter( !is.na(hi.qual) & hi.qual == 0 ),
+                d %>% filter( !is.na(hi.qual) & hi.qual == 1 ),
+                d %>% filter( !is.na(qual.y.prox2) & qual.y.prox2 == "b.Actual or self-reported" ),
                 d %>% filter( !is.na(design) & grepl("RCT", design) == 1 ),
                 d %>% filter( !is.na(reproducible) & reproducible == 1 ),
-                d %>% filter( !is.na(non.extreme.logRR) & non.extreme.logRR == 1 ) )
+                d %>% filter( !is.na(non.extreme.logRR) & non.extreme.logRR == 1 ),
+                d.chal )
 
 
 subset.labels = c( "Overall",
                    "Non-borderline",
                    "Animal welfare only",
                    "High quality",
+                   "Actual or self-reported past behavior",
                    "Randomized",
                    "Preregistered with open data",
-                   "Exclude two extreme estimates" )
+                   "Exclude one extreme estimate",
+                   "Include high-bias challenge studies" )
 
 for (i in 1:length(subsets)) {
   analyze_one_meta( dat = subsets[[i]],
@@ -1082,6 +1076,7 @@ write.csv(resE, "subsets_table.csv", row.names = FALSE)
 
 # note: for some subsets, tau = 0, hence 0 estimate for certain Phats
 
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 #                              4. MODERATOR ANALYSES            
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -1091,7 +1086,7 @@ vars = c(
   "x.has.text",
   "x.has.visuals",
   "x.suffer",
-  "x.pushy",
+  "x.makes.request",
   "x.long",
   "y.long.lag",
   "perc.male.10"
@@ -1099,14 +1094,56 @@ vars = c(
 cor.mat = cor(d[,vars], use = "pairwise.complete.obs")
 cor.mat = round( cor.mat, 2 )
 
+# bm
+library(corrr)
+corrs = d %>% select(vars) %>%
+  correlate( use = "pairwise.complete.obs" ) %>%
+  stretch() %>%
+  arrange(desc(r)) %>%
+  group_by(r) %>%
+  filter(row_number()==1)
+
+corrs$x = dplyr::recode( corrs$x,
+                         "x.has.text" = "Text",
+                         "x.has.visuals" = "Visuals",
+                         "x.suffer" = "Graphic",
+                         "x.makes.request" = "Makes request",
+                         "x.long" = "Intervention >5 min",
+                         "y.long.lag" = "Follow-up >7 days",
+                         "perc.male.10" = "Male" )
+corrs$y = dplyr::recode( corrs$y,
+                         "x.has.text" = "Text",
+                         "x.has.visuals" = "Visuals",
+                         "x.suffer" = "Graphic",
+                         "x.makes.request" = "Makes request",
+                         "x.long" = "Intervention >5 min",
+                         "y.long.lag" = "Follow-up >7 days",
+                         "perc.male.10" = "Male" )
+corrs$r = round(corrs$r, 2)
+
+corrs = corrs[ !is.na(corrs$r), ]
+View(corrs)
+
 setwd(results.dir)
 setwd("Tables to prettify")
-write.csv(cor.mat, "moderator_cormat.csv", row.names = FALSE)
+write.csv(corrs, "moderator_cormat.csv")
+
+print( xtable(corrs), include.rownames = FALSE )
+
+
+
+# xtable( print(cor.mat, noSpaces = TRUE, printToggle = FALSE ) )
+# 
+# setwd(results.dir)
+# setwd("Tables to prettify")
+# write.csv(cor.mat, "moderator_cormat.csv")
+
 
 ##### Moderators in One Big Model #####
 if( exists("resE") ) rm(resE)
 
-# ~~~ maybe add country (U.S. vs. other) to this?
+# can't include north.america; causes sparsity and eigendecomposition 
+#  problems because has too much missing data
 moderators = c(
               #"published",
                "x.has.text",
@@ -1115,7 +1152,7 @@ moderators = c(
                "x.pushy",
                "x.long",
                "y.long.lag",
-               "qual.y.prox2",
+               #"qual.y.prox2",
                "perc.male.10"
                )
 
@@ -1148,6 +1185,10 @@ update_result_csv( name = "Meta-regression tau",
 ests = round( exp(est), 2 )
 pvals2 = format_stat(pval)
 pvals2[ pval < 0.01 ] = round(pval[ pval < 0.01 ], 3)
+update_result_csv( name = "k in meta-regression",
+                   section = 4,
+                   value = nrow(meta$data.full),
+                   print = TRUE )
 update_result_csv( name = paste( "Meta-regression est", meta$labels ),
                    section = 4,
                    value = ests,
@@ -1231,24 +1272,44 @@ write.csv(temp, "meta_regression_table.csv", row.names = FALSE)
 
 ################################# CONTINUOUS MODERATOR PLOTS #################################
 
+
+library(RColorBrewer)
+n <- 60
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+pie(rep(1,n), col=sample(col_vector, n))
+
+library(ggplot2)
+N = 100; M = 1000
+good.shapes = c(1:25,33:127)
+
 ##### time lag from intervention to outcome measurement #####
-ggplot( data = dp, aes( x = y.lag.days,
+temp = dp %>% filter( !is.na(y.lag.days) & !is.na(ens) )
+temp = droplevels(temp)
+ggplot( data = temp, aes( x = y.lag.days,
                         y = exp(ens),
                         color = authoryear,
                         shape = authoryear) ) + 
   geom_point(size = 4,
              alpha = 1) + 
-  geom_smooth() +
-  xlab("Days elapsed between intervention and outcome") +
+
+  xlab("Days elapsed between intervention and outcome measurement") +
   ylab("True effect estimate (RR)") +
   geom_hline(yintercept = 1, lty = 2) +
   
   # point of dichotomization
   geom_vline(xintercept = 7, lty = 2, color = "red") +
+  
   scale_x_continuous(limits = c(0,100),
                      breaks = seq(0,100,10)) +
-  scale_shape_manual(values = 1:50) +
+  scale_y_continuous( limits = c(.8, 1.8),
+                      breaks = c(.8, 1.8, .1) ) +
+  
+  scale_shape_manual(values = good.shapes,
+                     name = "Study") +
+  scale_color_manual(name = "Study") +
   #scale_colour_brewer(palette = "Set1") +
+  #scale_color_manual(values = col_vector) +
   theme_bw()
 
 
@@ -1273,15 +1334,11 @@ ggplot( data = dp, aes( x = x.min.exposed,
 
 
 
-##### percent male subjects
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+#                              5. HIGH-BIAS CHALLENGES            
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
-# mu = meta.rob$b.r
-# t2 = meta.rob$mod_info$tau.sq
-# mu.lo = meta.rob$reg_table$CI.L
-# mu.hi = meta.rob$reg_table$CI.U
-# mu.se = meta.rob$reg_table$SE
-# mu.pval = meta.rob$reg_table$prob
-
-
+# already included in the subsets table
+# meta-analyze proportions from each high-bias challenge
 

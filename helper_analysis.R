@@ -540,37 +540,37 @@ buildPoly <- function(xr, yr, slope = 1, intercept = 0, above = TRUE){
 
 
 
-#Generate some data
-dat <- data.frame(x=runif(10),y=runif(10))
-
-#Select two of the points to define the line
-pts <- dat[sample(1:nrow(dat),size=2,replace=FALSE),]
-
-
-
-min.sei = min( sqrt(d$varlogRR) )
-max.sei = max( sqrt(d$varlogRR) )
-
-#Slope and intercept of line through those points
-mod = lm( y ~ x,
-          data = data.frame( x = c( just_signif_est( min.sei ), just_signif_est( max.sei ) ),
-                             y = c(min.sei, max.sei) ) )
-
-sl = coef(mod)[2]
-int = 0
-
-# sl <- ( coords2[2] - coords1[2] ) / ( coords2[1] - coords1[1] )
-# int <- coords2[2] - (sl*coords2[1])
-
-#Build the polygon
-datPoly <- buildPoly(range( d$logRR ), range( sqrt(d$varlogRR) ),
-                     slope=sl,intercept=int,above=FALSE)
-
-#Make the plot
-p <- ggplot(d, aes(x=logRR,y=sqrt(varlogRR))) +
-  geom_point() +
-  geom_abline(slope=sl,intercept = int) +
-  geom_polygon(data=datPoly,aes(x=x,y=y),alpha=0.2,fill="blue")
-print(p)
+# #Generate some data
+# dat <- data.frame(x=runif(10),y=runif(10))
 # 
-
+# #Select two of the points to define the line
+# pts <- dat[sample(1:nrow(dat),size=2,replace=FALSE),]
+# 
+# 
+# 
+# min.sei = min( sqrt(d$varlogRR) )
+# max.sei = max( sqrt(d$varlogRR) )
+# 
+# #Slope and intercept of line through those points
+# mod = lm( y ~ x,
+#           data = data.frame( x = c( just_signif_est( min.sei ), just_signif_est( max.sei ) ),
+#                              y = c(min.sei, max.sei) ) )
+# 
+# sl = coef(mod)[2]
+# int = 0
+# 
+# # sl <- ( coords2[2] - coords1[2] ) / ( coords2[1] - coords1[1] )
+# # int <- coords2[2] - (sl*coords2[1])
+# 
+# #Build the polygon
+# datPoly <- buildPoly(range( d$logRR ), range( sqrt(d$varlogRR) ),
+#                      slope=sl,intercept=int,above=FALSE)
+# 
+# #Make the plot
+# p <- ggplot(d, aes(x=logRR,y=sqrt(varlogRR))) +
+#   geom_point() +
+#   geom_abline(slope=sl,intercept = int) +
+#   geom_polygon(data=datPoly,aes(x=x,y=y),alpha=0.2,fill="blue")
+# print(p)
+# # 
+# 
