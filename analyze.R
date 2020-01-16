@@ -1,13 +1,9 @@
 
 
-# Impressions: I think all the top interventions don't make requests and are more informative or indirect
-
-# to do: update analyze_one_meta to use the new Phat function :)
-
 ################################# PREP ################################# 
 
 # remove existing results files
-start.res.from.scratch = FALSE
+start.res.from.scratch = TRUE
 
 if ( start.res.from.scratch == TRUE ) {
   setwd(results.dir)
@@ -63,6 +59,13 @@ d$n.paper = as.numeric( as.character(d$n.paper) )
 
 # article-level dataset
 d.arts = d[ !duplicated(d$authoryear), ]
+
+# for counting hopeless studies
+setwd(data.dir)
+# NOTE: this step breaks if cell values are hyphenated! 
+d2 = read_xlsx("Extracted qualitative data.xlsx", na = "NR")
+# remove missing rows
+d2 = d2 %>% filter(!is.na(`First author last name`))
 
 # # study characteristics, including the ones that didn't contribute point estimates
 # # only used to calculate the number of hopeless studies
@@ -128,17 +131,6 @@ update_result_csv( name = paste( "Stats source", t$stats.source, sep = " " ),
                    value = t$perc,
                    print = TRUE )
 
-# number of "hopeless" articles and interventions (included but couldn't get data)
-# ~~~ once d2 spreadsheet is cleaner, try to get this from there
-# for now, just counted the 2 Norris studies and Dowsett
-update_result_csv( name = "Number articles hopeless",
-                   section = 0,
-                   value = 3,
-                   print = TRUE )
-update_result_csv( name = "Number estimates hopeless",
-                   section = 0,
-                   value = 7,
-                   print = TRUE )
 
 # median number of point estimates contributed by each study
 update_result_csv( name = "Perc articles multiple ests",
@@ -150,6 +142,30 @@ update_result_csv( name = "Perc articles multiple ests",
 update_result_csv( name = "ICC",
                    section = 0,
                    value = round( ICCest(authoryear, logRR, d)$ICC, digits ),
+                   print = TRUE )
+
+# number of high-bias challenge estimates analyzed (non-hopeless)
+update_result_csv( name = "k ests high-bias challenges",
+                   section = 0,
+                   value = sum( d.chal$exclude.main == 1 ),
+                   print = TRUE )
+
+
+##### Count Hopeless Articles/Studies in Various Categories #####
+
+( hopeless = d2 %>% filter( `Stats source (public data, data from author, paper, hopeless)` == "Hopeless" ) %>%
+  group_by(`Excluded challenge`, `First author last name`, `Year`) %>%
+  summarise( k = n() ) )
+
+
+update_result_csv( name = "Number articles hopeless",
+                   section = 0,
+                   # this works because table has 1 row per article
+                   value = length( hopeless$`First author last name`[ hopeless$`Excluded challenge` == 0 ] ),
+                   print = TRUE )
+update_result_csv( name = "Number estimates hopeless",
+                   section = 0,
+                   value = sum( hopeless$k[ hopeless$`Excluded challenge` == 0 ] ),
                    print = TRUE )
 
 
@@ -188,6 +204,29 @@ xtable( print(t, noSpaces = TRUE, printToggle = FALSE, nonnormal = median.vars) 
 setwd(results.dir)
 setwd("Tables to prettify")
 write.csv(print(t), "study_char_table.csv")
+
+
+
+
+tab1 = table1_add_row( x = d$country,
+                       var.header = "Country",  # variable name to use in table
+                       type = "cat",
+                       countNA = TRUE,
+                       .tab1 = NULL )
+
+( tab1 = table1_add_row( x = d$perc.male,
+                         var.header = "Percent male",  # variable name to use in table
+                         type = "cont",
+                         countNA = TRUE,
+                         .tab1 = tab1 ) )
+
+( tab1 = table1_add_row( x = d$x.suffer,
+                         var.header = "Graphic",  # variable name to use in table
+                         type = "bin01",
+                         countNA = TRUE,
+                         .tab1 = tab1 ) )
+
+
 
 
 ################################# SUBJECT CHARACTERISTICS #################################
@@ -312,7 +351,7 @@ d = d %>% mutate( hi.qual = grepl("RCT", design) == TRUE &
                     #qual.y.prox %in% c("Self-reported", "Actual behavior") &
                     qual.exch %in% c("a.Low", "b.Medium") &
                     qual.sdb %in% c("a.Low", "b.Medium") &  # this is the killer
-                    qual.gen %in% c("a.Low", "b.Medium") &
+                    #qual.gen %in% c("a.Low", "b.Medium") &
                     !is.na(qual.missing) & qual.missing < 15 )   # reducing this to 5 doesn't change number of studies
 
 table(d$hi.qual)
@@ -384,7 +423,7 @@ update_result_csv( name = "Perc missing NR",
 # percent using intended or self-reported consumption/purchase
 update_result_csv( name = "Perc self-reported or intended",
                    section = 0,
-                   value = round( 100 * mean( d$qual.y.prox != "Actual", na.rm = TRUE ), 0 ),
+                   value = round( 100 * mean( d$qual.y.prox != "a.Actual", na.rm = TRUE ), 0 ),
                    print = FALSE )
 
 # percent strong or medium on each subjective variable
@@ -406,6 +445,12 @@ update_result_csv( name = "Perc ests hi.qual",
                    section = 0,
                    value = round( 100 * mean(d$hi.qual, na.rm = TRUE), 0 ),
                    print = TRUE )
+
+update_result_csv( name = "k ests hi.qual",
+                   section = 0,
+                   value = sum(d$hi.qual, na.rm = TRUE),
+                   print = TRUE )
+
 
 update_result_csv( name = "Unique articles hi.qual",
                    section = 0,
@@ -466,12 +511,12 @@ update_result_csv( name = "Overall tau logRR",
                    print = TRUE )
 
 
-##### Check Normality ######
-# use only main estimates here
-std = (d$logRR - c(mu)) / sqrt(c(t2) + d$varlogRR)
-hist(std, breaks=20)
-shapiro.test(std)
-# reasonable
+# ##### Check Normality ######
+# # use only main estimates here
+# std = (d$logRR - c(mu)) / sqrt(c(t2) + d$varlogRR)
+# hist(std, breaks=20)
+# shapiro.test(std)
+# # reasonable
 
 
 ################################# CALIBRATED ENSEMBLE ESTIMATES #################################
@@ -522,13 +567,7 @@ ggsave( "ensemble_density.pdf",
 
 ##### Studies with Best Ensemble Estimates #####
 # handful of studies with best ensemble estimates
-( best.ens = d$unique[ order(d$ens, decreasing = TRUE) ][1:8] )
-
-# ...vs. handful with best point estimates
-( best.est = d$unique[ order(d$logRR, decreasing = TRUE) ][1:8] )
-
-# interesting...only 6/8 best point estimates are among 5 best ensemble estimates!
-sum(best.ens %in% best.est)
+( best.ens = d$unique[ order(d$ens, decreasing = TRUE) ][1:9] )
 
 # look at characteristics of best interventions
 # interesting that all are no-request interventions
@@ -639,18 +678,19 @@ base = ggplot( data = dp, aes( x = exp(logRR),
 
 base
 
-# ~~~ why is pooled at the top again??
 
 setwd(results.dir)
 ggsave( "forest.pdf",
+        plot = base,
         width = 15,
-        height = 10 )
+        height = 12 )
 
 
 setwd(overleaf.dir)
 ggsave( "forest.pdf",
+        plot = base,
         width = 15,
-        height = 10 )
+        height = 12 )
 
 
 ################################# NPPHAT :D #################################
@@ -698,7 +738,7 @@ if (npphat.from.scratch == TRUE) {
   res = merge( res, temp.df, by.x = "q", by.y = "q")
   
   # turn into percentage
-  res$Est = 100*res$Est.x # ~~~ why are there 2 different estimates that are different??
+  res$Est = 100*res$Est.x 
   res$lo = 100*res$lo
   res$hi = 100*res$hi
   
@@ -901,39 +941,39 @@ update_result_csv( name = "weightr mu pval",
                    print = FALSE )
 
 
-##### S-values ######
-# s-values to reduce to null
-( res = svalue( yi = d$logRR,
-                vi = d$varlogRR,
-                q = log(1), 
-                clustervar = d$authoryear,
-                model = "robust" ) )
-# N.P. for both point estimate and CI
-update_result_csv( name = "sval est to 1",
-                   section = 2,
-                   value = res$sval.est,
-                   print = FALSE )
-update_result_csv( name = "sval CI to 1",
-                   section = 2,
-                   value = res$sval.ci,
-                   print = FALSE )
-
-
-# s-values to reduce effect size to RR=1.1
-( res = svalue( yi = d$logRR,
-                vi = d$varlogRR,
-                q = log(1.1), 
-                clustervar = d$authoryear,
-                model = "robust" ) )
-# N.P. for estimate
-update_result_csv( name = "sval est to 1.1",
-                   section = 2,
-                   value = res$sval.est,
-                   print = FALSE )
-update_result_csv( name = "sval CI to 1.1",
-                   section = 2,
-                   value = round( res$sval.ci, 2 ),
-                   print = FALSE )
+# ##### S-values ######
+# # s-values to reduce to null
+# ( res = svalue( yi = d$logRR,
+#                 vi = d$varlogRR,
+#                 q = log(1), 
+#                 clustervar = d$authoryear,
+#                 model = "robust" ) )
+# # N.P. for both point estimate and CI
+# update_result_csv( name = "sval est to 1",
+#                    section = 2,
+#                    value = res$sval.est,
+#                    print = FALSE )
+# update_result_csv( name = "sval CI to 1",
+#                    section = 2,
+#                    value = res$sval.ci,
+#                    print = FALSE )
+# 
+# 
+# # s-values to reduce effect size to RR=1.1
+# ( res = svalue( yi = d$logRR,
+#                 vi = d$varlogRR,
+#                 q = log(1.1), 
+#                 clustervar = d$authoryear,
+#                 model = "robust" ) )
+# # N.P. for estimate
+# update_result_csv( name = "sval est to 1.1",
+#                    section = 2,
+#                    value = res$sval.est,
+#                    print = FALSE )
+# update_result_csv( name = "sval CI to 1.1",
+#                    section = 2,
+#                    value = round( res$sval.ci, 2 ),
+#                    print = FALSE )
 
 
 ##### Worst-Case Meta-Analysis ######
@@ -999,6 +1039,13 @@ ggsave( "funnel.pdf",
         width = 8,
         height = 6 )
 
+# regular contour-enhanced funnel
+library(metafor)
+# first remove the huge point
+temp = d[ !d$logRR > 1.5, ]
+m.temp = rma.uni( yi = temp$logRR,
+                  vi = temp$varlogRR )
+funnel.rma(m.temp, level = 0.95, legend = TRUE)
 
 
 
@@ -1042,7 +1089,7 @@ subsets = list( d,
 subset.labels = c( "Overall",
                    "Non-borderline",
                    "Animal welfare only",
-                   "High quality",
+                   "Lowest risk of bias",
                    "Actual or self-reported past behavior",
                    "Randomized",
                    "Preregistered with open data",
@@ -1081,7 +1128,8 @@ write.csv(resE, "subsets_table.csv", row.names = FALSE)
 #                              4. MODERATOR ANALYSES            
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
-##### Correlation Among Numeric Moderators ####
+################################# SFIG: CORRELATIONS AMONG MODERATORS #################################
+
 vars = c(
   "x.has.text",
   "x.has.visuals",
@@ -1091,10 +1139,7 @@ vars = c(
   "y.long.lag",
   "perc.male.10"
 )
-cor.mat = cor(d[,vars], use = "pairwise.complete.obs")
-cor.mat = round( cor.mat, 2 )
 
-# bm
 library(corrr)
 corrs = d %>% select(vars) %>%
   correlate( use = "pairwise.complete.obs" ) %>%
@@ -1128,18 +1173,13 @@ setwd(results.dir)
 setwd("Tables to prettify")
 write.csv(corrs, "moderator_cormat.csv")
 
+library(xtable)
 print( xtable(corrs), include.rownames = FALSE )
 
 
 
-# xtable( print(cor.mat, noSpaces = TRUE, printToggle = FALSE ) )
-# 
-# setwd(results.dir)
-# setwd("Tables to prettify")
-# write.csv(cor.mat, "moderator_cormat.csv")
+################################# META-REGRESSION #################################
 
-
-##### Moderators in One Big Model #####
 if( exists("resE") ) rm(resE)
 
 # can't include north.america; causes sparsity and eigendecomposition 
@@ -1220,70 +1260,55 @@ setwd("Tables to prettify")
 write.csv(temp, "meta_regression_table.csv", row.names = FALSE)
 
 
-# ##### Moderator Forest Plot Hell Yeah #####
-# # these are the least-squares means for each group, NOT the coefficient estimates
-# # calculate estimated RR for each characteristic using the intercept
-# int = est[1]
-# bhat = est[2: length(est)]
-# log.RRs = int + bhat
-# 
-# # SE of RR itself rather than the model coefficient
-# # ~~~ note that this does not use the small-sample correction but rather 
-# #  asymptotic normality
-# # ~~~ email Fisher and Tipton about this
-# n.mods = length(est) - 1
-# se.RR = vapply( X = 1:n.mods, 
-#                 FUN = function(i) sqrt( V[1,1] + V[(i+1),(i+1)] + 2*V[1,(i+1)] ),
-#                 FUN.VALUE = -99 )
-# # i+1 because V's first entry is for the intercept itself
-# 
-# # sanity check for second moderator
-# sqrt( 0.0330520616 + 0.0064163250 + 2*-0.0080392687 )
-# 
-# # make plotting dataframe
-# dp = data.frame( mod = meta$labels[-1],
-#                  RR = exp(log.RRs),
-#                  lo = exp( log.RRs - qnorm(.975) * se.RR ),
-#                  hi = exp( log.RRs + qnorm(.975) * se.RR ),
-#                  pval = pval[-1] )
-# 
-# ggplot( data = dp,
-#         aes( x = RR,
-#              y = mod) ) +
-#   # pooled point estimate
-#   geom_vline( xintercept = exp(mu),
-#               lty = 2, 
-#               color = "red" ) +
-#   
-#   # null
-#   geom_vline( xintercept = 1,
-#               lty = 2, 
-#               color = "black" ) +
-#   
-#   geom_point(size = 2) +
-#   geom_errorbarh( aes(xmin = lo, 
-#                       xmax = hi,
-#                       height = 0.001 ) ) +
-#   scale_x_continuous( breaks = seq(0.5, 3.5, .1)) +
-#   theme_bw()
-  
-
-
-
 ################################# CONTINUOUS MODERATOR PLOTS #################################
 
 
+# set up sufficiently large color and shape ranges
 library(RColorBrewer)
-n <- 60
+n = 60
 qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
 col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
 pie(rep(1,n), col=sample(col_vector, n))
 
-library(ggplot2)
 N = 100; M = 1000
 good.shapes = c(1:25,33:127)
 
-##### time lag from intervention to outcome measurement #####
+
+##### SFig4: Time Exposed to Intervention #####
+temp = dp %>% filter( !is.na(x.min.exposed) & !is.na(ens) )
+temp = droplevels(temp)
+ggplot( data = temp, aes( x = x.min.exposed,
+                        y = exp(ens),
+                        color = authoryear,
+                        shape = authoryear) ) + 
+  geom_point(size = 4) + 
+  xlab("Total minutes exposed to intervention") +
+  ylab("True effect estimate (RR)") +
+  
+  # null
+  geom_hline(yintercept = 1, lty = 2) +
+
+  scale_y_continuous( limits = c(.8, 1.8),
+                      breaks = seq(.8, 1.8, .1) ) +
+  scale_x_log10( limits = c(1,100),
+                 breaks = c(1,5,10,30,100)) +
+  
+  scale_shape_manual(values = good.shapes,
+                     name = "Study") +
+  labs(color = "Study") +
+  theme_bw()
+
+setwd(results.dir)
+ggsave( "continuous_x_duration.pdf",
+        width = 10,
+        height = 6 )
+setwd(overleaf.dir)
+ggsave( "continuous_x_duration.pdf",
+        width = 10,
+        height = 6 )
+
+
+##### SFig5: Time Lag Between Intervention and Outcome Measurement #####
 temp = dp %>% filter( !is.na(y.lag.days) & !is.na(ens) )
 temp = droplevels(temp)
 ggplot( data = temp, aes( x = y.lag.days,
@@ -1295,50 +1320,31 @@ ggplot( data = temp, aes( x = y.lag.days,
 
   xlab("Days elapsed between intervention and outcome measurement") +
   ylab("True effect estimate (RR)") +
-  geom_hline(yintercept = 1, lty = 2) +
   
-  # point of dichotomization
-  geom_vline(xintercept = 7, lty = 2, color = "red") +
+  # null
+  geom_hline(yintercept = 1, lty = 2) +
   
   scale_x_continuous(limits = c(0,100),
                      breaks = seq(0,100,10)) +
   scale_y_continuous( limits = c(.8, 1.8),
-                      breaks = c(.8, 1.8, .1) ) +
+                      breaks = seq(.8, 1.8, .1) ) +
   
   scale_shape_manual(values = good.shapes,
                      name = "Study") +
-  scale_color_manual(name = "Study") +
+  labs(color = "Study") +
   #scale_colour_brewer(palette = "Set1") +
   #scale_color_manual(values = col_vector) +
   theme_bw()
 
-
-##### time exposed to intervention
-ggplot( data = dp, aes( x = x.min.exposed,
-                        y = exp(ens),
-                        color = authoryear,
-                        shape = authoryear) ) + 
-  geom_point(size = 4) + 
-  geom_smooth() +
-  xlab("Total time exposed to intervention (min)") +
-  ylab("True effect estimate (RR)") +
-  
-  # point of dichotomization
-  geom_vline(xintercept = 5, lty = 2) +
-  scale_shape_manual(values = 1:50) +
-  # scale_x_continuous(limits = c(0,110),
-  #                    breaks = seq(0,95,5)) +
-  scale_x_log10( limits = c(1,100),
-                 breaks = c(1,5,10,30,100)) +
-  theme_bw()
+setwd(results.dir)
+ggsave( "continuous_time_lag.pdf",
+        width = 10,
+        height = 6 )
+setwd(overleaf.dir)
+ggsave( "continuous_time_lag.pdf",
+        width = 10,
+        height = 6 )
 
 
 
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-#                              5. HIGH-BIAS CHALLENGES            
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-
-# already included in the subsets table
-# meta-analyze proportions from each high-bias challenge
 
