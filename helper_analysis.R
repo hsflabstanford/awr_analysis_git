@@ -266,7 +266,8 @@ table1_add_row = function( x, # vector
                           perc.digits = 0,
                           num.digits = 2,
                           countNA = TRUE,
-                          .tab1 = NULL ) {
+                          .tab1 = NULL,
+                          print = TRUE ) {
   
   # x = d$x.suffer
   # x = d$country
@@ -334,9 +335,13 @@ table1_add_row = function( x, # vector
       "Summary" = c( NA, stat.string ) )
   }
   
+  
+  
   # add the new row to existing table 1, if applicable
-  if ( !is.null(.tab1) ) return( rbind(.tab1, new.row) )
-  else return(new.row)
+  if ( !is.null(.tab1) ) .tab1 = rbind(.tab1, new.row)
+  else .tab1 = new.row
+  if ( print == TRUE ) print(.tab1)
+  return(.tab1)
 }
 
 

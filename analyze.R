@@ -172,59 +172,81 @@ update_result_csv( name = "Number estimates hopeless",
 
 ################################# TABLE 2 (INDIVIDUAL STUDY CHARACTERISTICS) #################################
 
-# variables to include in table
-analysis.vars = c(
-  "country",
-  "perc.male",
-  
-  "x.has.text",
-  "x.has.visuals",
-  "x.suffer",
-  "x.pure.animals",
-  "x.min.exposed",
-  "x.tailored",
-  "x.pushy",
-  
-  "y.cat",
-  "y.lag.days",
-  
-  "stats.source")
+t = table1_add_row( x = d$country,
+                    var.header = "Country",  # variable name to use in table
+                    type = "cat",
+                    countNA = TRUE,
+                    .tab1 = NULL )
 
-##### Make Table 2 #####
-# to force use of median
-median.vars = c( "perc.male",
-                "x.min.exposed",
-                "y.lag.days" )
+t = table1_add_row( x = d$perc.male,
+                    var.header = "Percent male subjects",  # variable name to use in table
+                    type = "cont",
+                    countNA = TRUE,
+                    .tab1 = t )
 
-t = CreateTableOne(data=d[,analysis.vars],
-                     includeNA = TRUE )
-t = print(t, nonnormal = median.vars)
-xtable( print(t, noSpaces = TRUE, printToggle = FALSE, nonnormal = median.vars) )
+t = table1_add_row( x = d$x.has.text,
+                    var.header = "Intervention had text",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$x.has.visuals,
+                    var.header = "Intervention had visuals",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$x.suffer,
+                    var.header = "Intervention had graphic content",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$x.pure.animals,
+                    var.header = "Intervention was animal welfare only",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$x.tailored,
+                    var.header = "Intervention was personally tailored",  # variable name to use in table
+                    type = "cont",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$x.pushy,
+                    var.header = "Intervention's recommendation",  # variable name to use in table
+                    type = "cat",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$x.min.exposed,
+                    var.header = "Intervention's duration (minutes)",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$y.cat,
+                    var.header = "Outcome category",  # variable name to use in table
+                    type = "cat",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$y.lag.days,
+                    var.header = "Length of follow-up (days)",  # variable name to use in table
+                    type = "cont",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$stats.source,
+                    var.header = "Source of statistics",  # variable name to use in table
+                    type = "cat",
+                    countNA = TRUE,
+                    .tab1 = t )
 
 setwd(results.dir)
 setwd("Tables to prettify")
-write.csv(print(t), "study_char_table.csv")
-
-
-
-
-tab1 = table1_add_row( x = d$country,
-                       var.header = "Country",  # variable name to use in table
-                       type = "cat",
-                       countNA = TRUE,
-                       .tab1 = NULL )
-
-( tab1 = table1_add_row( x = d$perc.male,
-                         var.header = "Percent male",  # variable name to use in table
-                         type = "cont",
-                         countNA = TRUE,
-                         .tab1 = tab1 ) )
-
-( tab1 = table1_add_row( x = d$x.suffer,
-                         var.header = "Graphic",  # variable name to use in table
-                         type = "bin01",
-                         countNA = TRUE,
-                         .tab1 = tab1 ) )
+write.csv( t, "study_char_table.csv", row.names = FALSE )
 
 
 
