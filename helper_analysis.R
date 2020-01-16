@@ -41,6 +41,7 @@ analyze_one_meta = function( dat,
     Phat.l = lapply( ql,
                      FUN = function(q) {
                        
+                       # get new ensemble estimates for this cluster
                        ens = my_ens( yi = dat$yi, 
                                      sei = sqrt(dat$vyi) )
                        
@@ -155,7 +156,7 @@ analyze_one_meta = function( dat,
                         Level = levels,
                         k = k,
                         Est = est.string,
-                        Pval = format_stat(mu.pval),
+                        Pval = format_stat(mu.pval, cutoffs = c(.1, .0001) ),
                         Pval.Bonf = format_stat( pmin(mu.pval*n.tests, 1) ),
                         Tau = tau.string
   )

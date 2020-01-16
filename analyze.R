@@ -734,26 +734,25 @@ if (npphat.from.scratch == TRUE) {
   
   library(dplyr)
   
-  # # bootstrap a CI using only the values of q at which Phat jumps
-  q.jump = res.short$q
+  # bootstrap a CI for each entry in res.short
+  temp = res.short %>% rowwise() %>%
+    do( prop_stronger( q = .$q, 
+                       tail = "above",
+                       estimate.method = "calibrated",
+                       ci.method = "calibrated",
+                       dat = d,
+                       R = 2000 ) )
   
-  temp.l = lapply( q.jump, 
-                   FUN = function(.q) prop_stronger( q = .q, 
-                                                     tail = "above",
-                                                     estimate.method = "calibrated",
-                                                     ci.method = "calibrated",
-                                                     dat = d,
-                                                     R = 2000 ) )
-  
-  temp.df = do.call( rbind, temp.l )
-  temp.df$q = q.jump
-  
+  # bm
+  temp$q = res.short$q
+  temp$Est = 100*temp$Est
   
   # merge this with the full-length res dataframe, merging by Phat itself
-  res = merge( res, temp.df, by.x = "q", by.y = "q")
+  res = merge( res, temp, by.x = "q", by.y = "q")
   
-  # turn into percentage
-  res$Est = 100*res$Est.x 
+  # # NOT USED?
+  # # turn into percentage
+  res$Est = 100*res$Est.x
   res$lo = 100*res$lo
   res$hi = 100*res$hi
   
@@ -766,7 +765,7 @@ if (npphat.from.scratch == TRUE) {
 }
 
 # remove last row because CI is NA
-res = res[ -nrow(res), ]
+#res = res[ -nrow(res), ]
 
 ##### Make Plot #####
 library(ggplot2)
@@ -918,12 +917,9 @@ update_result_csv( name = "Phat below 1 hi",
 #                              2. SENSITIVITY ANALYSES            
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
+# bm
 
 ################################# PUBLICATION BIAS ################################# 
-
-# ~~~ also do these analyses excluding the 2 extreme ones (non.extreme.logRR)
-# to this end, put this script in a loop and make a nice table
-
 
 
 ##### Hedges Selection Model #####
@@ -1054,7 +1050,7 @@ ggsave( "funnel.pdf",
         width = 8,
         height = 6 )
 
-# regular contour-enhanced funnel
+# just for fun: regular contour-enhanced funnel
 library(metafor)
 # first remove the huge point
 temp = d[ !d$logRR > 1.5, ]
@@ -1078,7 +1074,7 @@ n.tests = 1
 
 # for Phat
 ql = c(log(1), log(1.1), log(1.2))
-boot.reps = 500  # ~~ increase later
+boot.reps = 2000 
 
 digits = 2
 
@@ -1122,8 +1118,6 @@ for (i in 1:length(subsets)) {
                     take.exp = TRUE,
                     n.tests = n.tests)
 }
-
-
 
 
 
@@ -1261,6 +1255,19 @@ update_result_csv( name = paste( "Meta-regression pval", meta$labels ),
                    value = pvals2,
                    print = TRUE )
 
+# for reporting in the Discussion in terms of percent more effective
+update_result_csv( name = paste( "Meta-regression go vegan RR-1" ),
+                   section = 4,
+                   value = 100*( ests[ meta$labels == "x.pushyd.Go.vegan"] - 1),
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression graphic RR-1" ),
+                   section = 4,
+                   value = 100*( ests[ meta$labels == "x.suffer"] - 1),
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression long lag RR-1" ),
+                   section = 4,
+                   value = 100*( 1 - ests[ meta$labels == "y.long.lagTRUE"] ),
+                   print = TRUE )
 
 ##### Meta-Regression Table #####
 CIs = format_CI( exp( mu.lo ),
