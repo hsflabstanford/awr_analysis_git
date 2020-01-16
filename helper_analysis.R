@@ -344,6 +344,77 @@ table1_add_row = function( x, # vector
   return(.tab1)
 }
 
+# return percent true for 0/1 variable, counting NA as own category
+percTRUE_incl_NA = function(x) {
+  prop.table( table(x, useNA = "ifany") )[2]
+}
+
+
+
+my_quality_table = function(.dat) {
+  t = table1_add_row( x = .dat$design,
+                      var.header = "Design",  # variable name to use in table
+                      type = "cat",
+                      countNA = TRUE,
+                      .tab1 = NULL )
+  
+  t = table1_add_row( x = .dat$qual.y.prox,
+                      var.header = "Outcome measurement",  # variable name to use in table
+                      type = "cat",
+                      countNA = TRUE,
+                      .tab1 = t )
+  
+  t = table1_add_row( x = .dat$qual.missing,
+                      var.header = "Percent missing data",  # variable name to use in table
+                      type = "cont",
+                      countNA = TRUE,
+                      .tab1 = t )
+  
+  t = table1_add_row( x = .dat$qual.exch,
+                      var.header = "Exchangeability",  # variable name to use in table
+                      type = "cat",
+                      countNA = TRUE,
+                      .tab1 = t )
+  
+  t = table1_add_row( x = .dat$qual.sdb,
+                      var.header = "Avoidance of social desirability bias",  # variable name to use in table
+                      type = "cat",
+                      countNA = TRUE,
+                      .tab1 = t )
+  
+  t = table1_add_row( x = .dat$qual.gen,
+                      var.header = "External generalizability",  # variable name to use in table
+                      type = "cat",
+                      countNA = TRUE,
+                      .tab1 = t )
+  
+  t = table1_add_row( x = .dat$qual.prereg == "Yes",
+                      var.header = "Preregistered",  # variable name to use in table
+                      type = "bin01",
+                      countNA = TRUE,
+                      .tab1 = t )
+  
+  t = table1_add_row( x = .dat$qual.public.data == "Yes",
+                      var.header = "Public data",  # variable name to use in table
+                      type = "bin01",
+                      countNA = TRUE,
+                      .tab1 = t )
+  
+  t = table1_add_row( x = .dat$qual.public.data == "Yes",
+                      var.header = "Public code",  # variable name to use in table
+                      type = "bin01",
+                      countNA = TRUE,
+                      .tab1 = t )
+  
+  
+  t = table1_add_row( x = .dat$hi.qual,
+                      var.header = "Overall lowest risk of bias",  # variable name to use in table
+                      type = "bin01",
+                      countNA = TRUE,
+                      .tab1 = t )
+}
+
+
 
 ################################ SIGNIFICANCE FUNNEL ################################
 

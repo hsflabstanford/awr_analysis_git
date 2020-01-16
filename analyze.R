@@ -267,35 +267,35 @@ update_result_csv( name = "Median perc male",
 # interventions containing text
 update_result_csv( name = "Perc interventions text",
                    section = 0,
-                   value = round( 100 * mean( d$x.has.text == 1, na.rm = TRUE ) ),
+                   value = round( 100 * percTRUE_incl_NA(d$x.has.text) ),
                    print = FALSE )
 
 # interventions containing visuals
 update_result_csv( name = "Perc interventions visuals",
                    section = 0,
-                   value = round( 100 * mean( d$x.has.visuals == 1, na.rm = TRUE ) ),
+                   value = round( 100 * percTRUE_incl_NA(d$x.has.visuals) ),
                    print = FALSE )
 
 # interventions containing graphic suffering
 update_result_csv( name = "Perc interventions graphic",
                    section = 0,
-                   value = round( 100 * mean( d$x.suffer == 1, na.rm = TRUE ) ),
+                   value = round( 100 * percTRUE_incl_NA(d$x.suffer) ),
                    print = FALSE )
 
 # interventions purely animal welfare
 update_result_csv( name = "Perc interventions pure",
                    section = 0,
-                   value = round( 100 * mean( d$x.pure.animals == 1, na.rm = TRUE ) ),
+                   value = round( 100 * percTRUE_incl_NA(d$x.pure.animals) ),
                    print = FALSE )
 
 # intervention duration
 update_result_csv( name = "Perc interventions short",
                    section = 0,
-                   value = round( 100 * mean( d$x.long == 0, na.rm = TRUE ), 0 ),
+                   value = round( 100 * (1 - percTRUE_incl_NA(d$x.long)), 0 ),
                    print = FALSE )
 
 # request type
-t = d %>% filter( !is.na(x.pushy) ) %>%
+t = d %>%
   group_by(x.pushy) %>%
   summarise( k = n() ) %>%
   mutate( perc = round( 100 * k / sum(k) ) )
@@ -308,14 +308,14 @@ update_result_csv( name = paste( "Pushy", t$x.pushy, sep = " " ),
 # interventions not personally tailored
 update_result_csv( name = "Perc interventions not tailored",
                    section = 0,
-                   value = round( 100 * mean( d$x.tailored == 0, na.rm = TRUE ) ),
+                   value = round( 100 * (1 - percTRUE_incl_NA(d$x.tailored)), 0 ),
                    print = FALSE )
 
 
 ################################# OUTCOME CHARACTERISTICS #################################
 
 # outcome category
-t = d %>% filter( !is.na(y.cat) ) %>%
+t = d %>%
   group_by(y.cat) %>%
   summarise( k = n() ) %>%
   mutate( perc = round( 100 * k / sum(k) ) )
@@ -326,7 +326,7 @@ update_result_csv( name = paste( "Y cat", t$y.cat, sep = " " ),
                    print = TRUE )
 
 # outcome proximity
-t = d %>% filter( !is.na(qual.y.prox) ) %>%
+t = d %>% 
   group_by(qual.y.prox) %>%
   summarise( k = n() ) %>%
   mutate( perc = round( 100 * k / sum(k) ) )
@@ -337,9 +337,10 @@ update_result_csv( name = paste( "Y prox", t$qual.y.prox, sep = " " ),
                    print = TRUE )
 
 # time lag
+lag0 = d$y.lag.days == 0
 update_result_csv( name = "Perc time lag 0",
                    section = 0,
-                   value = round( 100 * mean( d$y.lag.days == 0, na.rm = TRUE ), 0 ),
+                   value = round( 100 * percTRUE_incl_NA(lag0), 0 ),
                    print = FALSE )
 update_result_csv( name = "Median time lag when >0",
                    section = 0,
@@ -355,13 +356,15 @@ table( grepl("Reduce", d$interpretation) )
 unique( d$interpretation[grepl("Reduce", d$interpretation)] )
 unique( d$interpretation[!grepl("Reduce", d$interpretation)] )
 
+reduce = grepl("Reduce", d$interpretation)
+
 update_result_csv( name = "Y interpret reduce",
                    section = 0,
-                   value = round( 100 * mean( grepl("Reduce", d$interpretation), na.rm = TRUE ), 0 ),
+                   value = round( 100 * percTRUE_incl_NA(reduce), 0 ),
                    print = FALSE )
 update_result_csv( name = "Y interpret absolute",
                    section = 0,
-                   value = round( 100 * mean( !grepl("Reduce", d$interpretation), na.rm = TRUE ), 0 ),
+                   value = round( 100 * (1 - percTRUE_incl_NA(reduce)), 0 ),
                    print = FALSE )
 
 
@@ -375,61 +378,51 @@ d = d %>% mutate( hi.qual = grepl("RCT", design) == TRUE &
                     qual.sdb %in% c("a.Low", "b.Medium") &  # this is the killer
                     #qual.gen %in% c("a.Low", "b.Medium") &
                     !is.na(qual.missing) & qual.missing < 15 )   # reducing this to 5 doesn't change number of studies
-
+# which are high-quality?
 table(d$hi.qual)
 unique( d$authoryear[ d$hi.qual == TRUE ] )
 length( unique( d$authoryear[ d$hi.qual == TRUE ] ) )
-
 # compare to my personal list of methodological favorites
 #unique( d$authoryear[ d$mm.fave == 1 ] )
-# good! seems to line up well :)
+
 
 ##### Make Table #####
-quality.vars = c( "design", names(d)[ grepl("qual", names(d)) ] )
 
-median.vars = c("qual.missing")
+# for all studies and stratified by publication status
+t = my_quality_table(d)
+t.pub = my_quality_table(d[ d$published == 1, ])
+t.unpub = my_quality_table(d[ d$published == 0, ])
 
-setwd(results.dir)
-t = CreateTableOne(data=d[,quality.vars], includeNA = TRUE)
-t = print(t, nonnormal = median.vars)
+t$Published = t.pub$Summary
+t$Unpublished = t.unpub$Summary
 
 setwd(results.dir)
 setwd("Tables to prettify")
 write.csv(print(t), "study_quality_table.csv")
 
-# stratified by published vs. unpublished
-# bm
-d$published2 = as.character(d$published)
-t = CreateTableOne(data=d[, c(quality.vars, "published2")], strata = "published2", includeNA = TRUE)
-t = print(t, nonnormal = median.vars)
-setwd(results.dir)
-setwd("Tables to prettify")
-write.csv(print(t), "study_quality_table_by_published.csv")
-
-
 
 # percent randomized
 update_result_csv( name = "Perc randomized",
                    section = 0,
-                   value = round( 100 * mean(d$randomized, na.rm = TRUE), 0 ),
+                   value = round( 100 * percTRUE_incl_NA(d$randomized), 0 ),
                    print = FALSE )
 
 # percent with public data
 update_result_csv( name = "Perc public data",
                    section = 0,
-                   value = round( 100 * mean(d$qual.public.data == "Yes", na.rm = TRUE), 0 ),
+                   value = round( 100 * percTRUE_incl_NA(d$qual.public.data == "Yes"), 0 ),
                    print = TRUE )
 
 # percent with public code
 update_result_csv( name = "Perc public code",
                    section = 0,
-                   value = round( 100 * mean(d$qual.public.code == "Yes", na.rm = TRUE), 0 ),
+                   value = round( 100 * percTRUE_incl_NA(d$qual.public.code == "Yes"), 0 ),
                    print = TRUE )
 
 # percent preregistered
 update_result_csv( name = "Perc prereg",
                    section = 0,
-                   value = round( 100 * mean(d$qual.prereg == "Yes", na.rm = TRUE), 0 ),
+                   value = round( 100 * percTRUE_incl_NA(d$qual.prereg == "Yes"), 0 ),
                    print = TRUE )
 
 # median missing data
@@ -445,27 +438,27 @@ update_result_csv( name = "Perc missing NR",
 # percent using intended or self-reported consumption/purchase
 update_result_csv( name = "Perc self-reported or intended",
                    section = 0,
-                   value = round( 100 * mean( d$qual.y.prox != "a.Actual", na.rm = TRUE ), 0 ),
+                   value = round( 100 * percTRUE_incl_NA(d$qual.y.prox == "a.Actual"), 0 ),
                    print = FALSE )
 
 # percent strong or medium on each subjective variable
 update_result_csv( name = "Perc qual.exch okay",
                    section = 0,
-                   value = round( 100 * mean(d$qual.exch %in% c("a.Low", "b.Medium"), na.rm = TRUE), 0 ),
+                   value = round( 100 * percTRUE_incl_NA( d$qual.exch %in% c("a.Low", "b.Medium") ), 0 ),
                    print = FALSE )
 update_result_csv( name = "Perc qual.sdb okay",
                    section = 0,
-                   value = round( 100 * mean(d$qual.sdb %in% c("a.Low", "b.Medium"), na.rm = TRUE), 0 ),
+                   value = round( 100 * percTRUE_incl_NA( d$qual.sdb %in% c("a.Low", "b.Medium") ), 0 ),
                    print = FALSE )
 update_result_csv( name = "Perc qual.gen okay",
                    section = 0,
-                   value = round( 100 * mean(d$qual.gen %in% c("a.Low", "b.Medium"), na.rm = TRUE), 0 ),
+                   value = round( 100 * percTRUE_incl_NA( d$qual.gen %in% c("a.Low", "b.Medium") ), 0 ),
                    print = TRUE )
 
 # percent high-quality
 update_result_csv( name = "Perc ests hi.qual",
                    section = 0,
-                   value = round( 100 * mean(d$hi.qual, na.rm = TRUE), 0 ),
+                   value = round( 100 * percTRUE_incl_NA(d$hi.qual), 0 ),
                    print = TRUE )
 
 update_result_csv( name = "k ests hi.qual",
