@@ -15,7 +15,7 @@ expect_equal( d$varlogRR[ d$effect.measure == "logRR" ],
 expect_equal( d$logRR[ d$effect.measure == "smd" ],
               log( sqrt( exp( d$yi[ d$effect.measure == "smd" ] * pi / sqrt(3) ) ) ), 
               tol = 0.001 )
-# WA derivative: derivative of log( sqrt( exp(d*pi/sqrt(3) ) ) )
+# Wolfram Alpha derivative: derivative of log( sqrt( exp(d*pi/sqrt(3) ) ) )
 expect_equal( d$varlogRR[ d$effect.measure == "smd" ],
               ( pi / (2*sqrt(3)) )^2 * d$vi[ d$effect.measure == "smd" ], 
               tol = 0.001 )

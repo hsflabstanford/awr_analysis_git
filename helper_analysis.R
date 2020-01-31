@@ -401,7 +401,7 @@ my_quality_table = function(.dat) {
                       countNA = TRUE,
                       .tab1 = t )
   
-  t = table1_add_row( x = .dat$qual.public.data == "Yes",
+  t = table1_add_row( x = .dat$qual.public.code == "Yes",
                       var.header = "Public code",  # variable name to use in table
                       type = "bin01",
                       countNA = TRUE,

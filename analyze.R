@@ -37,6 +37,7 @@ library(weightr)
 library(PublicationBias)
 library(tableone)
 library(readxl)
+library(testthat)
 
 # prepped dataset
 setwd(data.dir)
@@ -52,8 +53,8 @@ d.chal = d[ d$use.rr.analysis == 1, ]
 d.chal = droplevels(d.chal)
 
 # main dataset without high-bias challenges
-# ~~~ after coding of exclude.main is complete, remove the is.na call
-d = d[ d$use.rr.analysis == 1 & !is.na(d$exclude.main) & d$exclude.main == 0, ]  
+expect_equal( sum( is.na(d$exclude.main) ), 0 )  # should never be Na
+d = d[ d$use.rr.analysis == 1 & d$exclude.main == 0, ]  
 d = droplevels(d)
 d$n.paper = as.numeric( as.character(d$n.paper) )
 
@@ -119,6 +120,12 @@ update_result_csv( name = "n per article Q3",
 update_result_csv( name = "Perc articles published",
                    section = 0,
                    value = round( 100 * mean( d.arts$published ), 0 ),
+                   print = FALSE )
+
+# earliest publication date
+update_result_csv( name = "Earliest year",
+                   section = 0,
+                   value = sort(d$year)[1],  # it's a factor variable
                    print = FALSE )
 
 # how we obtained point estimates
@@ -210,7 +217,7 @@ t = table1_add_row( x = d$x.pure.animals,
 
 t = table1_add_row( x = d$x.tailored,
                     var.header = "Intervention was personally tailored",  # variable name to use in table
-                    type = "cont",
+                    type = "bin01",
                     countNA = TRUE,
                     .tab1 = t )
 
@@ -222,7 +229,7 @@ t = table1_add_row( x = d$x.pushy,
 
 t = table1_add_row( x = d$x.min.exposed,
                     var.header = "Intervention's duration (minutes)",  # variable name to use in table
-                    type = "bin01",
+                    type = "cont",
                     countNA = TRUE,
                     .tab1 = t )
 
@@ -438,7 +445,7 @@ update_result_csv( name = "Perc missing NR",
 # percent using intended or self-reported consumption/purchase
 update_result_csv( name = "Perc self-reported or intended",
                    section = 0,
-                   value = round( 100 * percTRUE_incl_NA(d$qual.y.prox == "a.Actual"), 0 ),
+                   value = round( 100 * percTRUE_incl_NA(d$qual.y.prox != "a.Actual"), 0 ),
                    print = FALSE )
 
 # percent strong or medium on each subjective variable
@@ -948,7 +955,7 @@ update_result_csv( name = "weightr mu hi",
                    print = FALSE )
 update_result_csv( name = "weightr mu pval",
                    section = 2,
-                   value = format_stat( 2 * ( 1 - pnorm( abs(m1[[2]]$par[2]) / ses[2] ) ) ),
+                   value = format_stat( 2 * ( 1 - pnorm( abs(m1[[2]]$par[2]) / ses[2] ) ), cutoffs = c(0.10, pval.cutoff) ),
                    print = FALSE )
 
 
@@ -1059,6 +1066,23 @@ m.temp = rma.uni( yi = temp$logRR,
 funnel.rma(m.temp, level = 0.95, legend = TRUE)
 
 
+##### Fit Selection Model to Just Unpublished, or Just Published, Studies #####
+
+( weightfunct( effect = d$logRR[ d$published == 1 ],
+                    v = d$varlogRR[ d$published == 1 ],
+                    steps = c(0.025, 1),
+                    table = TRUE ) )
+significance_funnel2(yi = d$logRR[ d$published == 1 ],
+                     vi = d$varlogRR[ d$published == 1 ] )
+
+( weightfunct( effect = d$logRR[ d$published == 0 ],
+               v = d$varlogRR[ d$published == 0 ],
+               steps = c(0.025, 1),
+               table = TRUE ) )
+significance_funnel2(yi = d$logRR[ d$published == 0 ],
+                     vi = d$varlogRR[ d$published == 0 ] )
+
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 #                              3. SUBSET ANALYSES            
@@ -1093,8 +1117,11 @@ subsets = list( d,
                 d %>% filter( !is.na(qual.y.prox2) & qual.y.prox2 == "b.Actual or self-reported" ),
                 d %>% filter( !is.na(design) & grepl("RCT", design) == 1 ),
                 d %>% filter( !is.na(reproducible) & reproducible == 1 ),
+                d %>% filter( !is.na(published) & published == 1 ),
+                d %>% filter( !is.na(published) & published == 0 ),
                 d %>% filter( !is.na(non.extreme.logRR) & non.extreme.logRR == 1 ),
-                d.chal )
+                d.chal,
+                d.chal %>% filter( exclude.main == TRUE ) )
 
 
 subset.labels = c( "Overall",
@@ -1104,8 +1131,11 @@ subset.labels = c( "Overall",
                    "Actual or self-reported past behavior",
                    "Randomized",
                    "Preregistered with open data",
+                   "Published studies",
+                   "Unpublished studies",
                    "Exclude one extreme estimate",
-                   "Include high-bias challenge studies" )
+                   "Include high-bias challenge studies",
+                   "Challenge studies only")
 
 for (i in 1:length(subsets)) {
   analyze_one_meta( dat = subsets[[i]],
@@ -1129,8 +1159,7 @@ setwd(results.dir)
 setwd("Tables to prettify")
 write.csv(resE, "subsets_table.csv", row.names = FALSE)
 
-
-# note: for some subsets, tau = 0, hence 0 estimate for certain Phats
+# note: for some subsets, tau = 0, hence 0 estimate for certain Phats and inestimable CI
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
