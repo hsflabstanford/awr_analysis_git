@@ -4,6 +4,8 @@
 
 # remove existing results files
 start.res.from.scratch = TRUE
+# should we redo the time-consuming bootstrapping?
+npphat.from.scratch = TRUE 
 
 if ( start.res.from.scratch == TRUE ) {
   setwd(results.dir)
@@ -13,21 +15,7 @@ if ( start.res.from.scratch == TRUE ) {
 }
 
 
-
-data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Data extraction"
-code.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Analysis/awr_analysis_git"
-results.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Analysis/Results from R"
-overleaf.dir = "~/Dropbox/Apps/Overleaf/AWR (animal welfare interventions review)/R_objects"
-
-setwd(code.dir); source("helper_analysis.R")
-
-
-# for formatting stats
-digits = 2
-pval.cutoff = 10^-4  # threshold for using "<"
-options(scipen=999)
-
-
+# load packages
 library(dplyr)
 library(ICC)
 library(metafor)
@@ -39,43 +27,49 @@ library(tableone)
 library(readxl)
 library(testthat)
 
+data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Data extraction"
+code.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Analysis/awr_analysis_git"
+results.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Analysis/Results from R"
+# we write results straight to Overleaf-connected DropBox folder for error-proofing
+overleaf.dir = "~/Dropbox/Apps/Overleaf/AWR (animal welfare interventions review)/R_objects"
+
+# helper fns
+setwd(code.dir); source("helper_analysis.R")
+
+# for formatting stats
+digits = 2  # rounding
+pval.cutoff = 10^-4  # threshold for using "<"
+options(scipen=999)  # disable scientific notation
+
+
+##### Read In Datasets #####
+
 # prepped dataset
 setwd(data.dir)
 d = read.csv("prepped_data.csv")
-d = d %>% filter( !is.na(authoryear) )  # has blank rows for visual appeal
-# sanity check: should be none
-d$unique[ is.na(d$logRR) & d$use.rr.analysis == 1]
-# sanity check
-table(!is.na(d$logRR), d$use.rr.analysis)
+d = d %>% filter( !is.na(authoryear) )  # because that table has blank rows for prettiness
 
-# dataset that includes the high-bias challenges
+# dataset that still includes the high-bias challenges
 d.chal = d[ d$use.rr.analysis == 1, ]
 d.chal = droplevels(d.chal)
 
-# main dataset without high-bias challenges
-expect_equal( sum( is.na(d$exclude.main) ), 0 )  # should never be Na
+# main-analysis dataset without high-bias challenges
+expect_equal( sum( is.na(d$exclude.main) ), 0 )  # indicator for being a high-bias challenge should never be NA
 d = d[ d$use.rr.analysis == 1 & d$exclude.main == 0, ]  
 d = droplevels(d)
+# fix variable type after read-in
 d$n.paper = as.numeric( as.character(d$n.paper) )
 
 # article-level dataset
+# 1 row per article instead of per point estimate
 d.arts = d[ !duplicated(d$authoryear), ]
 
 # for counting hopeless studies
 setwd(data.dir)
-# NOTE: this step breaks if cell values are hyphenated! 
+# NOTE: this step will break if cell values are hyphenated! 
 d2 = read_xlsx("Extracted qualitative data.xlsx", na = "NR")
 # remove missing rows
 d2 = d2 %>% filter(!is.na(`First author last name`))
-
-# # study characteristics, including the ones that didn't contribute point estimates
-# # only used to calculate the number of hopeless studies
-# d2 = read_xlsx("Extracted qualitative data.xlsx", na = "NR")
-# # remove missing rows
-# d2 = d2 %>% filter(!is.na(`First author last name`))
-# d2$authoryear = paste( d2$`First author last name`,
-#                        as.character(d2$Year),
-#                        sep = " " )
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -83,6 +77,8 @@ d2 = d2 %>% filter(!is.na(`First author last name`))
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 ################################# BASICS #################################
+
+# MM audited 2020-2-1
 
 # number of articles
 update_result_csv( name = "k articles",
@@ -159,7 +155,7 @@ update_result_csv( name = "k ests high-bias challenges",
 
 
 ##### Count Hopeless Articles/Studies in Various Categories #####
-
+# sanity check: this should match the separate table in Appendix
 ( hopeless = d2 %>% filter( `Stats source (public data, data from author, paper, hopeless)` == "Hopeless" ) %>%
   group_by(`Excluded challenge`, `First author last name`, `Year`) %>%
   summarise( k = n() ) )
@@ -178,6 +174,8 @@ update_result_csv( name = "Number estimates hopeless",
 
 
 ################################# TABLE 2 (INDIVIDUAL STUDY CHARACTERISTICS) #################################
+
+# MM audited 2020-2-1
 
 t = table1_add_row( x = d$country,
                     var.header = "Country",  # variable name to use in table
@@ -260,6 +258,8 @@ write.csv( t, "study_char_table.csv", row.names = FALSE )
 
 ################################# SUBJECT CHARACTERISTICS #################################
 
+# MM audited 2020-2-1
+
 # interventions containing text
 update_result_csv( name = "Median perc male",
                    section = 0,
@@ -268,8 +268,9 @@ update_result_csv( name = "Median perc male",
 
 
 
-
 ################################# INTERVENTION CHARACTERISTICS #################################
+
+# MM audited 2020-2-1
 
 # interventions containing text
 update_result_csv( name = "Perc interventions text",
@@ -355,11 +356,12 @@ update_result_csv( name = "Median time lag when >0",
                    print = TRUE )
 update_result_csv( name = "Max time lag",
                    section = 0,
-                   value = round( max( d$y.lag.days[ !is.na(d$y.lag.days) & d$y.lag.days > 0 ] ), digits ),
+                   value = round( max( d$y.lag.days[ !is.na(d$y.lag.days) ] ), digits ),
                    print = TRUE )
 
 # interpretation of outcome
 table( grepl("Reduce", d$interpretation) )
+# sanity check for sorting them based on the "Reduce" substring:
 unique( d$interpretation[grepl("Reduce", d$interpretation)] )
 unique( d$interpretation[!grepl("Reduce", d$interpretation)] )
 
@@ -377,9 +379,10 @@ update_result_csv( name = "Y interpret absolute",
 
 ################################# TABLE 2 (RISKS OF BIAS AT ARTICLE LEVEL) #################################
 
+
 ##### Make High-Quality Variable #####
 # how many meet bar of high quality?
-d = d %>% mutate( hi.qual = grepl("RCT", design) == TRUE & 
+d = d %>% mutate( hi.qual = (randomized == TRUE) & 
                     #qual.y.prox %in% c("Self-reported", "Actual behavior") &
                     qual.exch %in% c("a.Low", "b.Medium") &
                     qual.sdb %in% c("a.Low", "b.Medium") &  # this is the killer
@@ -390,10 +393,14 @@ table(d$hi.qual)
 unique( d$authoryear[ d$hi.qual == TRUE ] )
 length( unique( d$authoryear[ d$hi.qual == TRUE ] ) )
 # compare to my personal list of methodological favorites
-#unique( d$authoryear[ d$mm.fave == 1 ] )
+# unique( d$authoryear[ d$mm.fave == 1 ] )
 
 
 ##### Make Table #####
+
+# ~~~ THIS PART NOT AUDITED:
+#  there is missing data for qual.exch for Feltz since we haven't done it yet
+#  so the tables can't be merged together
 
 # for all studies and stratified by publication status
 t = my_quality_table(d)
@@ -407,6 +414,10 @@ setwd(results.dir)
 setwd("Tables to prettify")
 write.csv(print(t), "study_quality_table.csv")
 
+
+##### Stats on Individual Quality Characteristics #####
+
+# MM audited 2020-2-1
 
 # percent randomized
 update_result_csv( name = "Perc randomized",
@@ -448,7 +459,8 @@ update_result_csv( name = "Perc self-reported or intended",
                    value = round( 100 * percTRUE_incl_NA(d$qual.y.prox != "a.Actual"), 0 ),
                    print = FALSE )
 
-# percent strong or medium on each subjective variable
+# percent with low or medium risk of bias on each subjective variable
+#  rather than unclear or high risk of bias
 update_result_csv( name = "Perc qual.exch okay",
                    section = 0,
                    value = round( 100 * percTRUE_incl_NA( d$qual.exch %in% c("a.Low", "b.Medium") ), 0 ),
@@ -485,6 +497,8 @@ update_result_csv( name = "Unique articles hi.qual",
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 ################################# 1. OVERALL META-ANALYSIS #################################
+
+# MM audited 2020-2-1
 
 ##### Robust Meta-Analysis ######
 # also reproduced in the subset analyses, but need to run here for 
@@ -533,17 +547,12 @@ update_result_csv( name = "Overall tau logRR",
                    print = TRUE )
 
 
-# ##### Check Normality ######
-# # use only main estimates here
-# std = (d$logRR - c(mu)) / sqrt(c(t2) + d$varlogRR)
-# hist(std, breaks=20)
-# shapiro.test(std)
-# # reasonable
-
-
 ################################# CALIBRATED ENSEMBLE ESTIMATES #################################
 
+# MM audited 2020-2-2
+
 ##### Plot the Ensemble Estimates #####
+# note these are on the log scale
 d$ens = my_ens(yi = d$logRR, 
                sei = sqrt(d$varlogRR))
 
@@ -621,43 +630,40 @@ dp = add_row( dp,
               varlogRR = meta.rob$reg_table$SE^2,
               RR.lo = exp(mu.lo),
               RR.hi = exp(mu.hi),
-              #X.cat = "pooled",
-              #Y.cat = "pooled",
               unique = "POOLED",
               borderline = 0,
               rel.wt = 5 )
 
 
-# make sure POOLED is the first level of the factor variable so it's displayed at bottom
+# set POOLED as the first level of the factor variable so it's displayed at bottom
 correct.order = dp$unique
 dp$unique = factor(dp$unique, levels = correct.order)
 levels(dp$unique)
 
-
 dp$is.pooled = as.factor( c( "Pooled estimate", rep("Individual study", nrow(dp) - 1) ) )
 
-
-#colors = c("red", "black", "blue")
+dp$borderline.pretty = NA
+dp$borderline.pretty[ dp$borderline == 0 ] = "Non-borderline inclusion"
+dp$borderline.pretty[ dp$borderline == 1 ] = "Borderline inclusion"
 
 shapes = c(10, 19, 15)
-#breaks = seq(0.4, 6.0, .2)
 
 breaks = c( seq(0.4, 1.3, .1),
             1.5,
             seq(1.5, 4, .5),
             seq(4, 6, 1) )
 
-#breaks = exp( seq( log(0.4), log(6), .2 )
-
 # for borderline status
-colors = c("black", "orange")
+colors = c("orange", "black")
 
+
+  
 library(ggplot2)
 base = ggplot( data = dp, aes( x = exp(logRR), 
                                y = unique,
                                size = rel.wt,
                                shape = is.pooled,
-                               color = as.factor(borderline) ) ) +
+                               color = borderline.pretty ) ) +
   geom_point() +
   #color = X.intensiveness ) ) +
   geom_errorbarh( aes(xmin = RR.lo,
@@ -680,7 +686,7 @@ base = ggplot( data = dp, aes( x = exp(logRR),
   guides(size = guide_legend("% weight in analysis") ) +
   
   scale_color_manual(values = colors,
-                     name = "Borderline inclusion") +
+                     name = "Study inclusion") +
   
   scale_shape_manual(values = shapes,
                      name = "") +
@@ -717,8 +723,8 @@ ggsave( "forest.pdf",
 
 ################################# NPPHAT :D #################################
 
-npphat.from.scratch = TRUE 
-
+# MM audited 2020-1-2
+# ~~ but rerun the sanity check after running NPPhat again with larger dataset
 
 if (npphat.from.scratch == TRUE) {
   ##### Make Plotting Dataframe #####
@@ -799,13 +805,10 @@ ggplot( data = res,
   geom_ribbon( aes(ymin=res$lo, ymax=res$hi), alpha=0.15, fill = "black" ) 
 
 
-# 8 x 6 works well
-
 setwd(results.dir)
 ggsave( "npphat.pdf",
         width = 8,
         height = 6 )
-
 
 setwd(overleaf.dir)
 ggsave( "npphat.pdf",
@@ -839,7 +842,7 @@ Phat = prop_stronger( q = log(1.1),
                       R = 2000 )
 update_result_csv( name = "Phat above 1.1",
                    section = 1,
-                   value = round( 100 * Phat$Est,  ),
+                   value = round( 100 * Phat$Est, 0 ),
                    print = FALSE )
 update_result_csv( name = "Phat above 1.1 lo",
                    section = 1,
@@ -860,7 +863,7 @@ Phat = prop_stronger( q = log(1.2),
                             R = 2000 )
 update_result_csv( name = "Phat above 1.2",
                    section = 1,
-                   value = round( 100 * Phat$Est,  ),
+                   value = round( 100 * Phat$Est, 0 ),
                    print = FALSE )
 update_result_csv( name = "Phat above 1.2 lo",
                    section = 1,
@@ -924,10 +927,10 @@ update_result_csv( name = "Phat below 1 hi",
 #                              2. SENSITIVITY ANALYSES            
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
-# bm
 
 ################################# PUBLICATION BIAS ################################# 
 
+# MM audited 2020-2-2
 
 ##### Hedges Selection Model #####
 # be careful about inference due to correlated point estimates
@@ -938,6 +941,7 @@ library(weightr)
                     steps = c(0.025, 1),
                     table = TRUE ) )
 # actually makes the estimate larger
+# get SEs via the Hessian
 H = m1[[2]]$hessian
 ses = sqrt( diag( solve(H) ) )
 
@@ -958,41 +962,8 @@ update_result_csv( name = "weightr mu pval",
                    value = format_stat( 2 * ( 1 - pnorm( abs(m1[[2]]$par[2]) / ses[2] ) ), cutoffs = c(0.10, pval.cutoff) ),
                    print = FALSE )
 
-
-# ##### S-values ######
-# # s-values to reduce to null
-# ( res = svalue( yi = d$logRR,
-#                 vi = d$varlogRR,
-#                 q = log(1), 
-#                 clustervar = d$authoryear,
-#                 model = "robust" ) )
-# # N.P. for both point estimate and CI
-# update_result_csv( name = "sval est to 1",
-#                    section = 2,
-#                    value = res$sval.est,
-#                    print = FALSE )
-# update_result_csv( name = "sval CI to 1",
-#                    section = 2,
-#                    value = res$sval.ci,
-#                    print = FALSE )
-# 
-# 
-# # s-values to reduce effect size to RR=1.1
-# ( res = svalue( yi = d$logRR,
-#                 vi = d$varlogRR,
-#                 q = log(1.1), 
-#                 clustervar = d$authoryear,
-#                 model = "robust" ) )
-# # N.P. for estimate
-# update_result_csv( name = "sval est to 1.1",
-#                    section = 2,
-#                    value = res$sval.est,
-#                    print = FALSE )
-# update_result_csv( name = "sval CI to 1.1",
-#                    section = 2,
-#                    value = round( res$sval.ci, 2 ),
-#                    print = FALSE )
-
+# sanity check for CI lower limit
+exp(0.2855 - 1.96*0.04209)
 
 ##### Worst-Case Meta-Analysis ######
 # affirmative vs. non-affirmative
@@ -1041,11 +1012,47 @@ update_result_csv( name = "Worst mu pval",
                    print = TRUE )
 
 
+# ##### S-values ######
+# omitted because not very informative given the worst-case results above
+# # s-values to reduce to null
+# ( res = svalue( yi = d$logRR,
+#                 vi = d$varlogRR,
+#                 q = log(1), 
+#                 clustervar = d$authoryear,
+#                 model = "robust" ) )
+# # N.P. for both point estimate and CI
+# update_result_csv( name = "sval est to 1",
+#                    section = 2,
+#                    value = res$sval.est,
+#                    print = FALSE )
+# update_result_csv( name = "sval CI to 1",
+#                    section = 2,
+#                    value = res$sval.ci,
+#                    print = FALSE )
+# 
+# 
+# # s-values to reduce effect size to RR=1.1
+# ( res = svalue( yi = d$logRR,
+#                 vi = d$varlogRR,
+#                 q = log(1.1), 
+#                 clustervar = d$authoryear,
+#                 model = "robust" ) )
+# # N.P. for estimate
+# update_result_csv( name = "sval est to 1.1",
+#                    section = 2,
+#                    value = res$sval.est,
+#                    print = FALSE )
+# update_result_csv( name = "sval CI to 1.1",
+#                    section = 2,
+#                    value = round( res$sval.ci, 2 ),
+#                    print = FALSE )
+
+
 ##### Significance Funnel ######
 significance_funnel2(yi = d$logRR,
                      vi = d$varlogRR,
                      est.N = mu.worst,
-                    est.all = mu )
+                     est.all = mu )
 
 setwd(results.dir)
 ggsave( "funnel.pdf",
@@ -1068,6 +1075,8 @@ funnel.rma(m.temp, level = 0.95, legend = TRUE)
 
 ##### Fit Selection Model to Just Unpublished, or Just Published, Studies #####
 
+# these results are only reported qualitatively
+# so not saving the numerical results
 ( weightfunct( effect = d$logRR[ d$published == 1 ],
                     v = d$varlogRR[ d$published == 1 ],
                     steps = c(0.025, 1),
@@ -1089,6 +1098,8 @@ significance_funnel2(yi = d$logRR[ d$published == 0 ],
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 ################################# RUN ALL SUBSET ANALYSES #################################
+
+# MM audited 2020-2-2
 
 if( exists("resE") ) rm(resE)
 
@@ -1115,13 +1126,12 @@ subsets = list( d,
                 d %>% filter( !is.na(x.pure.animals) & x.pure.animals == 1 ),
                 d %>% filter( !is.na(hi.qual) & hi.qual == 1 ),
                 d %>% filter( !is.na(qual.y.prox2) & qual.y.prox2 == "b.Actual or self-reported" ),
-                d %>% filter( !is.na(design) & grepl("RCT", design) == 1 ),
+                d %>% filter( !is.na(design) & randomized == 1 ),
                 d %>% filter( !is.na(reproducible) & reproducible == 1 ),
                 d %>% filter( !is.na(published) & published == 1 ),
                 d %>% filter( !is.na(published) & published == 0 ),
                 d %>% filter( !is.na(non.extreme.logRR) & non.extreme.logRR == 1 ),
-                d.chal,
-                d.chal %>% filter( exclude.main == TRUE ) )
+                d.chal )
 
 
 subset.labels = c( "Overall",
@@ -1134,8 +1144,7 @@ subset.labels = c( "Overall",
                    "Published studies",
                    "Unpublished studies",
                    "Exclude one extreme estimate",
-                   "Include high-bias challenge studies",
-                   "Challenge studies only")
+                   "Include HROB challenge studies" )
 
 for (i in 1:length(subsets)) {
   analyze_one_meta( dat = subsets[[i]],
@@ -1167,6 +1176,8 @@ write.csv(resE, "subsets_table.csv", row.names = FALSE)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 ################################# SFIG: CORRELATIONS AMONG MODERATORS #################################
+
+# MM audited 2020-2-2
 
 vars = c(
   "x.has.text",
@@ -1218,21 +1229,17 @@ print( xtable(corrs), include.rownames = FALSE )
 
 ################################# META-REGRESSION #################################
 
-if( exists("resE") ) rm(resE)
+# MM audited 2020-2-2
 
 # can't include north.america; causes sparsity and eigendecomposition 
 #  problems because has too much missing data
-moderators = c(
-              #"published",
-               "x.has.text",
+moderators = c( "x.has.text",
                "x.has.visuals",
                "x.suffer",
                "x.pushy",
                "x.long",
                "y.long.lag",
-               #"qual.y.prox2",
-               "perc.male.10"
-               )
+               "perc.male.10" )
 
 linpred.string = paste( moderators, collapse=" + ")
 string = paste( "logRR ~ ", linpred.string, collapse = "")
@@ -1255,14 +1262,16 @@ V = meta$VR.r  # variance-covariance matrix
 # report tau in this model
 update_result_csv( name = "Meta-regression tau",
                    section = 4,
-                   value = round( sqrt( meta$mod_info$tau.sq ), 2 ),
+                   value = round( sqrt(t2), 2 ),
                    print = TRUE )
 
 
 # estimates for text
 ests = round( exp(est), 2 )
 pvals2 = format_stat(pval)
-pvals2[ pval < 0.01 ] = round(pval[ pval < 0.01 ], 3)
+# get rid of scientific notation; instead use more digits
+pvals2[ pval < 0.01 ] = round( pval[ pval < 0.01 ], 3 )
+
 update_result_csv( name = "k in meta-regression",
                    section = 4,
                    value = nrow(meta$data.full),
@@ -1313,7 +1322,6 @@ write.csv(temp, "meta_regression_table.csv", row.names = FALSE)
 
 ################################# CONTINUOUS MODERATOR PLOTS #################################
 
-
 # set up sufficiently large color and shape ranges
 library(RColorBrewer)
 n = 60
@@ -1334,7 +1342,7 @@ ggplot( data = temp, aes( x = x.min.exposed,
                         shape = authoryear) ) + 
   geom_point(size = 4) + 
   xlab("Total minutes exposed to intervention") +
-  ylab("True effect estimate (RR)") +
+  ylab("Calibrated estimate (RR)") +
   
   # null
   geom_hline(yintercept = 1, lty = 2) +
@@ -1370,7 +1378,7 @@ ggplot( data = temp, aes( x = y.lag.days,
              alpha = 1) + 
 
   xlab("Days elapsed between intervention and outcome measurement") +
-  ylab("True effect estimate (RR)") +
+  ylab("Calibrated estimate (RR)") +
   
   # null
   geom_hline(yintercept = 1, lty = 2) +
