@@ -219,7 +219,7 @@ t = table1_add_row( x = d$x.tailored,
                     countNA = TRUE,
                     .tab1 = t )
 
-t = table1_add_row( x = d$x.pushy,
+t = table1_add_row( x = d$x.rec,
                     var.header = "Intervention's recommendation",  # variable name to use in table
                     type = "cat",
                     countNA = TRUE,
@@ -304,11 +304,11 @@ update_result_csv( name = "Perc interventions short",
 
 # request type
 t = d %>%
-  group_by(x.pushy) %>%
+  group_by(x.rec) %>%
   summarise( k = n() ) %>%
   mutate( perc = round( 100 * k / sum(k) ) )
 
-update_result_csv( name = paste( "Pushy", t$x.pushy, sep = " " ),
+update_result_csv( name = paste( "Pushy", t$x.rec, sep = " " ),
                    section = 0,
                    value = t$perc,
                    print = TRUE )
@@ -1236,7 +1236,7 @@ print( xtable(corrs), include.rownames = FALSE )
 moderators = c( "x.has.text",
                "x.has.visuals",
                "x.suffer",
-               "x.pushy",
+               "x.rec",
                "x.long",
                "y.long.lag",
                "perc.male.10" )
@@ -1296,7 +1296,7 @@ update_result_csv( name = paste( "Meta-regression pval", meta$labels ),
 # for reporting in the Discussion in terms of percent more effective
 update_result_csv( name = paste( "Meta-regression go vegan RR-1" ),
                    section = 4,
-                   value = 100*( ests[ meta$labels == "x.pushyd.Go.vegan"] - 1),
+                   value = 100*( ests[ meta$labels == "x.recd.Go.vegan"] - 1),
                    print = TRUE )
 update_result_csv( name = paste( "Meta-regression graphic RR-1" ),
                    section = 4,
