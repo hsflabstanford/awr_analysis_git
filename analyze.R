@@ -2,9 +2,9 @@
 
 ################################# PREP ################################# 
 
-# remove existing results files
-start.res.from.scratch = TRUE
-# should we redo the time-consuming bootstrapping?
+# should we remove existing results file instead of overwriting individual entries? 
+start.res.from.scratch = FALSE
+# should we redo the time-consuming NPPhat bootstrapping?
 npphat.from.scratch = TRUE 
 
 if ( start.res.from.scratch == TRUE ) {
@@ -16,6 +16,7 @@ if ( start.res.from.scratch == TRUE ) {
 
 
 # load packages
+detach("package:plyr", unload=TRUE)  # is a PITA if using dplyr
 library(dplyr)
 library(ICC)
 library(metafor)
@@ -26,6 +27,11 @@ library(PublicationBias)
 library(tableone)
 library(readxl)
 library(testthat)
+library(corrr)
+library(ggplot2)
+library(xtable)
+library(RColorBrewer)
+
 
 data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Data extraction"
 code.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Analysis/awr_analysis_git"
@@ -49,11 +55,11 @@ setwd(data.dir)
 d = read.csv("prepped_data.csv")
 d = d %>% filter( !is.na(authoryear) )  # because that table has blank rows for prettiness
 
-# dataset that still includes the high-bias challenges
+# dataset that still includes the SSWS
 d.chal = d[ d$use.rr.analysis == 1, ]
 d.chal = droplevels(d.chal)
 
-# main-analysis dataset without high-bias challenges
+# main-analysis dataset without SSWS
 expect_equal( sum( is.na(d$exclude.main) ), 0 )  # indicator for being a high-bias challenge should never be NA
 d = d[ d$use.rr.analysis == 1 & d$exclude.main == 0, ]  
 d = droplevels(d)
@@ -101,7 +107,7 @@ update_result_csv( name = "n total",
 # sample size per paper
 update_result_csv( name = "n per article median",
                    section = 0,
-                   value = median(d.arts$n.paper),
+                   value = round(median(d.arts$n.paper)), # round in case it falls between two values
                    print = FALSE )
 update_result_csv( name = "n per article Q1",
                    section = 0,
@@ -148,7 +154,7 @@ update_result_csv( name = "ICC",
                    print = TRUE )
 
 # number of high-bias challenge estimates analyzed (non-hopeless)
-update_result_csv( name = "k ests high-bias challenges",
+update_result_csv( name = "k ests SSWS",
                    section = 0,
                    value = sum( d.chal$exclude.main == 1 ),
                    print = TRUE )
@@ -396,11 +402,9 @@ length( unique( d$authoryear[ d$hi.qual == TRUE ] ) )
 # unique( d$authoryear[ d$mm.fave == 1 ] )
 
 
-##### Make Table #####
+##### Make Table 2 #####
 
-# ~~~ THIS PART NOT AUDITED:
-#  there is missing data for qual.exch for Feltz since we haven't done it yet
-#  so the tables can't be merged together
+# MM audited 2020-2-6
 
 # for all studies and stratified by publication status
 t = my_quality_table(d)
@@ -415,7 +419,7 @@ setwd("Tables to prettify")
 write.csv(print(t), "study_quality_table.csv")
 
 
-##### Stats on Individual Quality Characteristics #####
+##### Individual Stats on Quality Characteristics #####
 
 # MM audited 2020-2-1
 
@@ -598,12 +602,16 @@ ggsave( "ensemble_density.pdf",
 
 ##### Studies with Best Ensemble Estimates #####
 # handful of studies with best ensemble estimates
-( best.ens = d$unique[ order(d$ens, decreasing = TRUE) ][1:9] )
+( best.ens = d$unique[ order(d$ens, decreasing = TRUE) ][1:10] )
 
 # look at characteristics of best interventions
 # interesting that all are no-request interventions
 View(d[d$unique %in% best.ens,])
 
+# write list of studies with best ensemble estimates
+setwd(results.dir)
+write.csv( data.frame(best.ens),
+           "best_calibrated_estimates_studies.csv")
 
 ################################# FOREST PLOT #################################
 
@@ -622,7 +630,6 @@ dp = dp[ order(dp$ens, decreasing = FALSE), ]
 
 # add pooled point estimates as first rows
 # arbitrary relative weight
-library(dplyr)
 dp = add_row( dp,
               .before = 1,
               logRR = meta.rob$b.r,
@@ -658,7 +665,6 @@ colors = c("orange", "black")
 
 
   
-library(ggplot2)
 base = ggplot( data = dp, aes( x = exp(logRR), 
                                y = unique,
                                size = rel.wt,
@@ -683,14 +689,16 @@ base = ggplot( data = dp, aes( x = exp(logRR),
   
   geom_vline(xintercept = 1, lty = 2) +
   
-  guides(size = guide_legend("% weight in analysis") ) +
+  # guides(size = guide_legend("% weight in analysis",
+  #                            guide = FALSE) ) +
+  scale_size(guide = FALSE) +
   
   scale_color_manual(values = colors,
                      name = "Study inclusion") +
   
   scale_shape_manual(values = shapes,
-                     name = "") +
-  #guide=FALSE) +
+                     name = "",
+                     guide = FALSE) +
   
   # scale_x_continuous( breaks = breaks,
   #                     lim = c(breaks[1], breaks[length(breaks)] ),
@@ -726,9 +734,11 @@ ggsave( "forest.pdf",
 # MM audited 2020-1-2
 # ~~ but rerun the sanity check after running NPPhat again with larger dataset
 
+
+
 if (npphat.from.scratch == TRUE) {
   ##### Make Plotting Dataframe #####
-  q.vec = seq( 0, log(2), 0.01 )
+  q.vec = seq( log(0.85), log(2), 0.01 )
   ql = as.list(q.vec)
   
   # again pass threshold and calibrated estimates on log-RR scale
@@ -745,8 +755,6 @@ if (npphat.from.scratch == TRUE) {
   # #  this will not exceed the number of point estimates in the meta-analysis
   res.short = res[ diff(res$Est) != 0, ]
   
-  library(dplyr)
-  
   # bootstrap a CI for each entry in res.short
   temp = res.short %>% rowwise() %>%
     do( prop_stronger( q = .$q, 
@@ -756,7 +764,6 @@ if (npphat.from.scratch == TRUE) {
                        dat = d,
                        R = 2000 ) )
   
-  # bm
   temp$q = res.short$q
   temp$Est = 100*temp$Est
   
@@ -781,8 +788,6 @@ if (npphat.from.scratch == TRUE) {
 #res = res[ -nrow(res), ]
 
 ##### Make Plot #####
-library(ggplot2)
-
 ggplot( data = res,
         aes( x = exp(q),
              y = Est ) ) +
@@ -793,9 +798,15 @@ ggplot( data = res,
               lty = 2,
               color = "red" ) +
   
+  # null
+  geom_vline( xintercept = 1,
+              lty = 2,
+              color = "black" ) +
+  
   scale_y_continuous(  breaks = seq(0, 100, 10) ) +
   # stop x-axis early because last CI is NA
-  scale_x_continuous(  breaks = seq(1, exp(.56), .1) ) +
+  # bm: need to edit this one
+  scale_x_continuous(  breaks = seq(0.8, 2, .1) ) +
   
   geom_line(lwd=1.2) +
   
@@ -819,17 +830,23 @@ ggsave( "npphat.pdf",
 ##### Add to Results a Few Selected Values ####
 
 #### Phat > 1 #####
+Phat = prop_stronger( q = log(1), 
+                      tail = "above",
+                      estimate.method = "calibrated",
+                      ci.method = "calibrated",
+                      dat = d,
+                      R = 2000 )
 update_result_csv( name = "Phat above 1",
                    section = 1,
-                   value = round( res$Est[ res$q == log(1) ], 0 ),
+                   value = round( 100 * Phat$Est, 0 ),
                    print = FALSE )
 update_result_csv( name = "Phat above 1 lo",
                    section = 1,
-                   value = round( res$lo[ res$q == log(1) ], 0 ),
+                   value = round( 100 * Phat$lo, 0 ),
                    print = FALSE )
 update_result_csv( name = "Phat above 1 hi",
                    section = 1,
-                   value = round( res$hi[ res$q == log(1) ], 0 ),
+                   value = round( 100 * Phat$hi, 0 ),
                    print = TRUE )
 
 #### Phat > 1.1 #####
@@ -921,8 +938,6 @@ update_result_csv( name = "Phat below 1 hi",
                    value = round( 100*Phat.below$hi, 0 ),
                    print = TRUE )
 
-
-
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 #                              2. SENSITIVITY ANALYSES            
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -935,7 +950,6 @@ update_result_csv( name = "Phat below 1 hi",
 ##### Hedges Selection Model #####
 # be careful about inference due to correlated point estimates
 # can't fit model with 3 cutoffs because there are no significant negative studies
-library(weightr)
 ( m1 = weightfunct( effect = d$logRR,
                     v = d$varlogRR,
                     steps = c(0.025, 1),
@@ -966,10 +980,6 @@ update_result_csv( name = "weightr mu pval",
 exp(0.2855 - 1.96*0.04209)
 
 ##### Worst-Case Meta-Analysis ######
-# affirmative vs. non-affirmative
-d$pval = 2 * ( 1 - pnorm( abs(d$logRR) / sqrt(d$varlogRR) ) )
-d$affirm = d$pval < 0.05 & d$logRR > 0
-table(d$affirm)
 
 # meta-analyze only the nonaffirmatives
 # 2-sided pval
@@ -1065,7 +1075,6 @@ ggsave( "funnel.pdf",
         height = 6 )
 
 # just for fun: regular contour-enhanced funnel
-library(metafor)
 # first remove the huge point
 temp = d[ !d$logRR > 1.5, ]
 m.temp = rma.uni( yi = temp$logRR,
@@ -1133,6 +1142,9 @@ subsets = list( d,
                 d %>% filter( !is.na(non.extreme.logRR) & non.extreme.logRR == 1 ),
                 d.chal )
 
+# make sure none of the subsets is length 0 due to messed up variables
+lapply( X = subsets, FUN = nrow )
+
 
 subset.labels = c( "Overall",
                    "Non-borderline",
@@ -1144,7 +1156,7 @@ subset.labels = c( "Overall",
                    "Published studies",
                    "Unpublished studies",
                    "Exclude one extreme estimate",
-                   "Include HROB challenge studies" )
+                   "Include SSWS studies" )
 
 for (i in 1:length(subsets)) {
   analyze_one_meta( dat = subsets[[i]],
@@ -1161,7 +1173,14 @@ for (i in 1:length(subsets)) {
 
 
 # simplify and prettify
-resE = resE %>% select( Meta, k, Est, Pval, Tau, `Percent above 1`, `Percent above 1.1`, `Percent above 1.2`)
+resE = resE %>% select( Meta,
+                        k,
+                        Est,
+                        Pval,
+                        Tau,
+                        `Percent above 1`,
+                        `Percent above 1.1`,
+                        `Percent above 1.2`)
 
 # save results
 setwd(results.dir)
@@ -1189,7 +1208,6 @@ vars = c(
   "perc.male.10"
 )
 
-library(corrr)
 corrs = d %>% select(vars) %>%
   correlate( use = "pairwise.complete.obs" ) %>%
   stretch() %>%
@@ -1222,7 +1240,6 @@ setwd(results.dir)
 setwd("Tables to prettify")
 write.csv(corrs, "moderator_cormat.csv")
 
-library(xtable)
 print( xtable(corrs), include.rownames = FALSE )
 
 
@@ -1231,7 +1248,7 @@ print( xtable(corrs), include.rownames = FALSE )
 
 # MM audited 2020-2-2
 
-# can't include north.america; causes sparsity and eigendecomposition 
+# can't include country; causes sparsity and eigendecomposition 
 #  problems because has too much missing data
 moderators = c( "x.has.text",
                "x.has.visuals",
@@ -1323,7 +1340,6 @@ write.csv(temp, "meta_regression_table.csv", row.names = FALSE)
 ################################# CONTINUOUS MODERATOR PLOTS #################################
 
 # set up sufficiently large color and shape ranges
-library(RColorBrewer)
 n = 60
 qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
 col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))

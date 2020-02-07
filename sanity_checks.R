@@ -81,6 +81,10 @@ d %>% group_by(x.has.text) %>%
 expect_equal( as.numeric( percTRUE_incl_NA(d$x.suffer) ),
               sum(d$x.suffer, na.rm = TRUE) / length(d$x.suffer) )
 
+################################ CHECK TABLE 2 ################################
+
+
+
 ################################ CHECK NPPHAT VALUES IN PLOTTING DATAFRAME ################################
 
 setwd(results.dir)
