@@ -113,7 +113,7 @@ for ( i in inds ) {
 ################################ MANUAL SUBSET ANALYSIS ################################
 
 # choose one variable and do subset analysis manually
-dat = d %>% filter( !is.na(qual.y.prox2) & qual.y.prox2 == "b.Actual or self-reported" )
+dat = d %>% filter( !is.na(published) & published == 1 )
 
 dim(dat)
 
@@ -135,6 +135,8 @@ prop_stronger( q = log(1),
                tail = "above",
                estimate.method = "calibrated",
                ci.method = "calibrated",
+               yi.name = "logRR",
+               vi.name = "varlogRR",
                dat = dat,
                R = 2000 )
 
@@ -142,6 +144,8 @@ prop_stronger( q = log(1.1),
                tail = "above",
                estimate.method = "calibrated",
                ci.method = "calibrated",
+               yi.name = "logRR",
+               vi.name = "varlogRR",
                dat = dat,
                R = 2000 )
 
@@ -149,13 +153,42 @@ prop_stronger( q = log(1.2),
                tail = "above",
                estimate.method = "calibrated",
                ci.method = "calibrated",
+               yi.name = "logRR",
+               vi.name = "varlogRR",
                dat = dat,
                R = 2000 )
 
 # oh yeaaahhhhhhhh :D
 
 
+analyze_one_meta( dat = dat,
+                  meta.name = "published",
+                  yi.name = "logRR",
+                  vi.name = "varlogRR",
+                  digits = 0.2,
+                  boot.reps = 2000, 
+                  ql = ql,
+                  take.exp = TRUE,
+                  n.tests = n.tests)
 
+# for published subset, CI is from 0.76 to 0.76
 
+boot.res.ens = boot( data = dat, 
+                     parallel = "multicore",
+                     R = 2000, 
+                     statistic = function(original, indices) {
+                       
+                       b = original[indices,]
+                       
+                       ens.b = my_ens( yi = b$logRR, 
+                                       sei = sqrt(b$varlogRR) )
+                       return( sum(ens.b > 0) / length(ens.b) )
+                     }
+)
 
+boot.ci(boot.res.ens, type="bca")
+
+tryCatch({
+  
+}, warning = function() )
 

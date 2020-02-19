@@ -3,7 +3,7 @@
 ################################# PREP ################################# 
 
 # should we remove existing results file instead of overwriting individual entries? 
-start.res.from.scratch = FALSE
+start.res.from.scratch = TRUE
 # should we redo the time-consuming NPPhat bootstrapping?
 npphat.from.scratch = TRUE 
 
@@ -16,6 +16,11 @@ if ( start.res.from.scratch == TRUE ) {
 
 
 # load packages
+library(checkpoint)
+# save the package environment that MBM used when analyzing
+checkpoint("2020-02-12")
+
+
 detach("package:plyr", unload=TRUE)  # is a PITA if using dplyr
 library(dplyr)
 library(ICC)
@@ -328,15 +333,20 @@ update_result_csv( name = "Perc interventions not tailored",
 
 ################################# OUTCOME CHARACTERISTICS #################################
 
-# outcome category
+# outcome category (percent and n)
 t = d %>%
   group_by(y.cat) %>%
   summarise( k = n() ) %>%
   mutate( perc = round( 100 * k / sum(k) ) )
 
-update_result_csv( name = paste( "Y cat", t$y.cat, sep = " " ),
+update_result_csv( name = paste( "Perc Y cat", t$y.cat, sep = " " ),
                    section = 0,
                    value = t$perc,
+                   print = TRUE )
+
+update_result_csv( name = paste( "k Y cat", t$y.cat, sep = " " ),
+                   section = 0,
+                   value = t$k,
                    print = TRUE )
 
 # outcome proximity
@@ -345,9 +355,15 @@ t = d %>%
   summarise( k = n() ) %>%
   mutate( perc = round( 100 * k / sum(k) ) )
 
-update_result_csv( name = paste( "Y prox", t$qual.y.prox, sep = " " ),
+update_result_csv( name = paste( "Perc Y prox", t$qual.y.prox, sep = " " ),
                    section = 0,
                    value = t$perc,
+                   print = TRUE )
+
+
+update_result_csv( name = paste( "k Y prox", t$qual.y.prox, sep = " " ),
+                   section = 0,
+                   value = t$k,
                    print = TRUE )
 
 # time lag
@@ -355,6 +371,10 @@ lag0 = d$y.lag.days == 0
 update_result_csv( name = "Perc time lag 0",
                    section = 0,
                    value = round( 100 * percTRUE_incl_NA(lag0), 0 ),
+                   print = FALSE )
+update_result_csv( name = "k time lag 0",
+                   section = 0,
+                   value = sum( lag0[ !is.na(lag0) ] ),
                    print = FALSE )
 update_result_csv( name = "Median time lag when >0",
                    section = 0,
@@ -373,15 +393,23 @@ unique( d$interpretation[!grepl("Reduce", d$interpretation)] )
 
 reduce = grepl("Reduce", d$interpretation)
 
-update_result_csv( name = "Y interpret reduce",
+update_result_csv( name = "Perc Y interpret reduce",
                    section = 0,
                    value = round( 100 * percTRUE_incl_NA(reduce), 0 ),
                    print = FALSE )
-update_result_csv( name = "Y interpret absolute",
+update_result_csv( name = "k Y interpret reduce",
+                   section = 0,
+                   value = sum( reduce[!is.na(reduce)] ),
+                   print = FALSE )
+
+update_result_csv( name = "Perc Y interpret absolute",
                    section = 0,
                    value = round( 100 * (1 - percTRUE_incl_NA(reduce)), 0 ),
                    print = FALSE )
-
+update_result_csv( name = "k Y interpret absolute",
+                   section = 0,
+                   value = sum( (1-reduce)[!is.na(reduce)] ),
+                   print = FALSE )
 
 ################################# TABLE 2 (RISKS OF BIAS AT ARTICLE LEVEL) #################################
 
@@ -608,10 +636,19 @@ ggsave( "ensemble_density.pdf",
 # interesting that all are no-request interventions
 View(d[d$unique %in% best.ens,])
 
+# look at the outcomes they used
+top.ens = d$ens %in% sort(d$ens)[91:100]
+d$ens[top.ens]
+d$qual.y.prox[top.ens]
+
+d$authoryear[ top.ens & d$qual.y.prox == "b.Self-reported" ]
+
 # write list of studies with best ensemble estimates
 setwd(results.dir)
 write.csv( data.frame(best.ens),
            "best_calibrated_estimates_studies.csv")
+
+
 
 ################################# FOREST PLOT #################################
 
@@ -735,7 +772,6 @@ ggsave( "forest.pdf",
 # ~~ but rerun the sanity check after running NPPhat again with larger dataset
 
 
-
 if (npphat.from.scratch == TRUE) {
   ##### Make Plotting Dataframe #####
   q.vec = seq( log(0.85), log(2), 0.01 )
@@ -761,6 +797,8 @@ if (npphat.from.scratch == TRUE) {
                        tail = "above",
                        estimate.method = "calibrated",
                        ci.method = "calibrated",
+                       yi.name = "logRR",
+                       vi.name = "varlogRR",
                        dat = d,
                        R = 2000 ) )
   
@@ -835,6 +873,8 @@ Phat = prop_stronger( q = log(1),
                       estimate.method = "calibrated",
                       ci.method = "calibrated",
                       dat = d,
+                      yi.name = "logRR",
+                      vi.name = "varlogRR",
                       R = 2000 )
 update_result_csv( name = "Phat above 1",
                    section = 1,
@@ -855,6 +895,8 @@ Phat = prop_stronger( q = log(1.1),
                       tail = "above",
                       estimate.method = "calibrated",
                       ci.method = "calibrated",
+                      yi.name = "logRR",
+                      vi.name = "varlogRR",
                       dat = d,
                       R = 2000 )
 update_result_csv( name = "Phat above 1.1",
@@ -873,11 +915,13 @@ update_result_csv( name = "Phat above 1.1 hi",
 
 #### Phat > 1.2 #####
 Phat = prop_stronger( q = log(1.2), 
-                            tail = "above",
-                            estimate.method = "calibrated",
-                            ci.method = "calibrated",
-                            dat = d,
-                            R = 2000 )
+                      tail = "above",
+                      estimate.method = "calibrated",
+                      ci.method = "calibrated",
+                      yi.name = "logRR",
+                      vi.name = "varlogRR",
+                      dat = d,
+                      R = 2000 )
 update_result_csv( name = "Phat above 1.2",
                    section = 1,
                    value = round( 100 * Phat$Est, 0 ),
@@ -898,6 +942,8 @@ Phat.below = prop_stronger( q = log(.9),
                             tail = "below",
                             estimate.method = "calibrated",
                             ci.method = "calibrated",
+                            yi.name = "logRR",
+                            vi.name = "varlogRR",
                             dat = d,
                             R = 2000 )
 
@@ -922,6 +968,8 @@ Phat.below = prop_stronger( q = log(1),
                             tail = "below",
                             estimate.method = "calibrated",
                             ci.method = "calibrated",
+                            yi.name = "logRR",
+                            vi.name = "varlogRR",
                             dat = d,
                             R = 2000 )
 
@@ -1323,6 +1371,11 @@ update_result_csv( name = paste( "Meta-regression long lag RR-1" ),
                    section = 4,
                    value = 100*( 1 - ests[ meta$labels == "y.long.lagTRUE"] ),
                    print = TRUE )
+
+
+# studies included in meta-regression
+d.mr = d %>% filter( complete.cases(d[,moderators]) )
+
 
 ##### Meta-Regression Table #####
 CIs = format_CI( exp( mu.lo ),

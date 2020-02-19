@@ -42,6 +42,8 @@ analyze_one_meta = function( dat,
                      FUN = function(q) {
                        
                        # get new ensemble estimates for this subset
+                       # yi and vyi aren't using yi.name and vi.name intentionally 
+                       #  since these are newly created variables
                        ens = my_ens( yi = dat$yi, 
                                      sei = sqrt(dat$vyi) )
                        
@@ -53,6 +55,8 @@ analyze_one_meta = function( dat,
                        
                        library(boot)
                        Note = NA
+                       boot.lo.ens = NA  # new
+                       boot.hi.ens = NA
                        tryCatch({
                          boot.res.ens = boot( data = dat, 
                                               parallel = "multicore",
@@ -75,8 +79,18 @@ analyze_one_meta = function( dat,
                        }, error = function(err){
                          boot.lo.ens <<- NA
                          boot.hi.ens <<- NA
+                         print( paste(meta.name, ": ", err$message, sep = " ") )
                          Note <<- err$message
-                       } )  # end tryCatch
+                         
+                       }, warning = function(w) {
+                         # catch "extreme order statistics used as endpoints"
+                         boot.lo.ens <<- NA
+                         boot.hi.ens <<- NA
+                         print( paste(meta.name, ": ", w$message, sep = " ") )
+                         Note <<- w$message
+                       }
+                       
+                       )  # end tryCatch
                        
                        return( data.frame( Est = Phat.NP.ens,
                                            lo = boot.lo.ens,
