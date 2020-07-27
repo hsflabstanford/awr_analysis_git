@@ -3,9 +3,11 @@
 ################################# PREP ################################# 
 
 # should we remove existing results file instead of overwriting individual entries? 
-start.res.from.scratch = TRUE
+start.res.from.scratch = FALSE
 # should we redo the time-consuming NPPhat bootstrapping?
-npphat.from.scratch = TRUE 
+npphat.from.scratch = FALSE 
+# should we use the grateful package to scan and cite packages?
+cite.packages.anew = FALSE
 
 if ( start.res.from.scratch == TRUE ) {
   setwd(results.dir)
@@ -16,8 +18,10 @@ if ( start.res.from.scratch == TRUE ) {
 
 
 # load packages
+# this will reinstall the versions of all packages as they existed on 
+#  the date MBM analyzed
+# https://cran.r-project.org/web/packages/checkpoint/vignettes/checkpoint.html
 library(checkpoint)
-# save the package environment that MBM used when analyzing
 checkpoint("2020-02-12")
 
 
@@ -36,6 +40,10 @@ library(corrr)
 library(ggplot2)
 library(xtable)
 library(RColorBrewer)
+library(irr)
+library(tidyverse)
+library(readxl)
+library(grateful)
 
 
 data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Data extraction"
@@ -43,6 +51,10 @@ code.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal wel
 results.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Analysis/Results from R"
 # we write results straight to Overleaf-connected DropBox folder for error-proofing
 overleaf.dir = "~/Dropbox/Apps/Overleaf/AWR (animal welfare interventions review)/R_objects"
+# directory with interrater reliability stats from Covidence
+irr.data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Literature search/Interrater reliability from Covidence"
+# directory with Scherer's per-capita animal deaths data
+scherer.data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Data extraction/Scherer animal slaughter data"
 
 # helper fns
 setwd(code.dir); source("helper_analysis.R")
@@ -81,6 +93,38 @@ setwd(data.dir)
 d2 = read_xlsx("Extracted qualitative data.xlsx", na = "NR")
 # remove missing rows
 d2 = d2 %>% filter(!is.na(`First author last name`))
+
+# subjective quality variables
+# these are already in the dataset above, but the following allows assessment
+#  of interrater reliability
+setwd(data.dir)
+setwd("Dual review of quality")
+d3 = read.csv("subjective_data_full_prepped.csv")
+
+# interrater reliability stats from Covidence
+setwd(irr.data.dir)
+d4 = read.csv("irr_title_abstract_screening.csv") 
+d5 = read.csv("irr_full_text_screening.csv") 
+
+# Scherer data (just used for a statistic in the Intro)
+setwd(scherer.data.dir)
+ds = read_xlsx("scherer_data.xlsx", sheet = "welfare_AL")
+names(ds)[1] = "country"
+
+##### Generate Citations for R Packages #####
+
+if ( cite.packages.anew == TRUE ) {
+  setwd(code.dir)
+  cite_packages()
+  # need to manually move the citations.html file
+  
+  # also look through the data prep code for additional packages
+  code.dir.prep = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Data extraction/awr_data_extraction_git"
+  setwd(code.dir.prep)
+  cite_packages()
+}
+
+
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
@@ -145,6 +189,24 @@ update_result_csv( name = paste( "Stats source", t$stats.source, sep = " " ),
                    value = t$perc,
                    print = TRUE )
 
+# presence of multiple eligible food outcomes
+update_result_csv( name = "Perc articles multiple elig foods",
+                   section = 0,
+                   value = round( 100 * mean( d.arts$y.other.eligible.foods ) ),
+                   print = TRUE )
+
+update_result_csv( name = "Perc articles multiple elig foods formed composite",
+                   section = 0,
+                   value = round( 100 * mean( grepl(pattern = "composite", d.arts$prose.y.other.eligible[ d.arts$y.other.eligible.foods == 1 ] ) ) ),
+                   print = TRUE )
+
+# look at articles whose additional outcomes were ALL not contributing to the composite
+d.arts %>% filter( !is.na(y.other.eligible.foods == 1) & 
+                     y.other.eligible.foods == 1 &
+                     grepl(pattern = "composite", prose.y.other.eligible ) == FALSE ) %>%
+  select( authoryear,
+          prose.y.other.eligible )
+# only Caldwell
 
 # median number of point estimates contributed by each study
 update_result_csv( name = "Perc articles multiple ests",
@@ -217,6 +279,45 @@ t = table1_add_row( x = d$x.suffer,
                     type = "bin01",
                     countNA = TRUE,
                     .tab1 = t )
+
+
+
+
+
+t = table1_add_row( x = d$x.mind.attr,
+                    var.header = "Intervention used mind attribution",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$x.soc.norm,
+                    var.header = "Intervention used social norms",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+
+t = table1_add_row( x = d$x.id.victim,
+                    var.header = "Intervention had identifiable victim",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+
+t = table1_add_row( x = d$x.soc.norm,
+                    var.header = "Intervention used social norms",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$x.impl,
+                    var.header = "Intervention gave implementation suggestions",  # variable name to use in table
+                    type = "bin01",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+
+
 
 t = table1_add_row( x = d$x.pure.animals,
                     var.header = "Intervention was animal welfare only",  # variable name to use in table
@@ -843,7 +944,6 @@ ggplot( data = res,
   
   scale_y_continuous(  breaks = seq(0, 100, 10) ) +
   # stop x-axis early because last CI is NA
-  # bm: need to edit this one
   scale_x_continuous(  breaks = seq(0.8, 2, .1) ) +
   
   geom_line(lwd=1.2) +
@@ -1239,7 +1339,7 @@ write.csv(resE, "subsets_table.csv", row.names = FALSE)
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-#                              4. MODERATOR ANALYSES            
+#                              4. MODERATOR ANALYSES (MAIN ONES)           
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 ################################# SFIG: CORRELATIONS AMONG MODERATORS #################################
@@ -1292,7 +1392,7 @@ print( xtable(corrs), include.rownames = FALSE )
 
 
 
-################################# META-REGRESSION #################################
+################################# META-REGRESSION 1: WITHOUT INTERVENTION COMPONENTS #################################
 
 # MM audited 2020-2-2
 
@@ -1472,6 +1572,260 @@ setwd(overleaf.dir)
 ggsave( "continuous_time_lag.pdf",
         width = 10,
         height = 6 )
+
+
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+#                              4.5. INTERVENTION COMPONENT MODERATOSR ANALYSES            
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+
+# BM
+
+# ~~~ temp
+# for now, just use my own spreadsheet 
+
+################################# SFIG: CORRELATIONS AMONG MODERATORS #################################
+
+# MM audited 2020-2-2
+
+vars = c(
+  "x.has.text",
+  "x.has.visuals",
+  "x.suffer",
+  "x.makes.request",
+  "x.long",
+  "y.long.lag",
+  "perc.male.10"
+)
+
+corrs = d %>% select(vars) %>%
+  correlate( use = "pairwise.complete.obs" ) %>%
+  stretch() %>%
+  arrange(desc(r)) %>%
+  group_by(r) %>%
+  filter(row_number()==1)
+
+corrs$x = dplyr::recode( corrs$x,
+                         "x.has.text" = "Text",
+                         "x.has.visuals" = "Visuals",
+                         "x.suffer" = "Graphic",
+                         "x.makes.request" = "Makes request",
+                         "x.long" = "Intervention >5 min",
+                         "y.long.lag" = "Follow-up >7 days",
+                         "perc.male.10" = "Male" )
+corrs$y = dplyr::recode( corrs$y,
+                         "x.has.text" = "Text",
+                         "x.has.visuals" = "Visuals",
+                         "x.suffer" = "Graphic",
+                         "x.makes.request" = "Makes request",
+                         "x.long" = "Intervention >5 min",
+                         "y.long.lag" = "Follow-up >7 days",
+                         "perc.male.10" = "Male" )
+corrs$r = round(corrs$r, 2)
+
+corrs = corrs[ !is.na(corrs$r), ]
+View(corrs)
+
+setwd(results.dir)
+setwd("Tables to prettify")
+write.csv(corrs, "moderator_cormat.csv")
+
+print( xtable(corrs), include.rownames = FALSE )
+
+
+
+################################# META-REGRESSION 1: WITHOUT INTERVENTION COMPONENTS #################################
+
+# MM audited 2020-2-2
+
+# can't include country; causes sparsity and eigendecomposition 
+#  problems because has too much missing data
+moderators = c( "x.has.text",
+                "x.has.visuals",
+                "x.suffer",
+                "x.rec",
+                "x.long",
+                "y.long.lag",
+                "perc.male.10" )
+
+linpred.string = paste( moderators, collapse=" + ")
+string = paste( "logRR ~ ", linpred.string, collapse = "")
+
+( meta = robu( eval( parse( text = string ) ), 
+               data = d, 
+               studynum = as.factor(authoryear),
+               var.eff.size = varlogRR,
+               modelweights = "HIER",
+               small = TRUE) )
+
+est = meta$b.r
+t2 = meta$mod_info$tau.sq
+mu.lo = meta$reg_table$CI.L
+mu.hi = meta$reg_table$CI.U
+mu.se = meta$reg_table$SE
+pval = meta$reg_table$prob
+V = meta$VR.r  # variance-covariance matrix
+
+# report tau in this model
+update_result_csv( name = "Meta-regression tau",
+                   section = 4,
+                   value = round( sqrt(t2), 2 ),
+                   print = TRUE )
+
+
+# estimates for text
+ests = round( exp(est), 2 )
+pvals2 = format_stat(pval)
+# get rid of scientific notation; instead use more digits
+pvals2[ pval < 0.01 ] = round( pval[ pval < 0.01 ], 3 )
+
+update_result_csv( name = "k in meta-regression",
+                   section = 4,
+                   value = nrow(meta$data.full),
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression est", meta$labels ),
+                   section = 4,
+                   value = ests,
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression lo", meta$labels ),
+                   section = 4,
+                   value = format_stat( exp(mu.lo) ),
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression hi", meta$labels ),
+                   section = 4,
+                   value = format_stat( exp(mu.hi) ),
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression pval", meta$labels ),
+                   section = 4,
+                   value = pvals2,
+                   print = TRUE )
+
+# for reporting in the Discussion in terms of percent more effective
+update_result_csv( name = paste( "Meta-regression go vegan RR-1" ),
+                   section = 4,
+                   value = 100*( ests[ meta$labels == "x.recd.Go.vegan"] - 1),
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression graphic RR-1" ),
+                   section = 4,
+                   value = 100*( ests[ meta$labels == "x.suffer"] - 1),
+                   print = TRUE )
+update_result_csv( name = paste( "Meta-regression long lag RR-1" ),
+                   section = 4,
+                   value = 100*( 1 - ests[ meta$labels == "y.long.lagTRUE"] ),
+                   print = TRUE )
+
+
+# studies included in meta-regression
+d.mr = d %>% filter( complete.cases(d[,moderators]) )
+
+
+##### Meta-Regression Table #####
+CIs = format_CI( exp( mu.lo ),
+                 exp( mu.hi ) )
+temp = data.frame( Moderator = meta$labels, 
+                   EstCI = paste( ests, CIs, sep = " " ),
+                   Pval = pvals2 )
+
+# save results
+setwd(results.dir)
+setwd("Tables to prettify")
+write.csv(temp, "meta_regression_table.csv", row.names = FALSE)
+
+
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+#                              5. INTERRATER RELIABILITY            
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+
+############################### IRR FOR ARTICLE INCLUSION ###############################
+
+# BM
+
+##### Title/Abstract Screening #####
+# calculate total ratings shared by each pair of reviewers to help with weighted average
+d4 = d4 %>% rowwise() %>%
+  mutate(tot = sum(A.Yes..B.Yes, A.Yes..B.No, A.No..B.Yes, A.No..B.No))
+
+mean.kappa = sum(d4$Cohen.s.Kappa * d4$tot) / sum(d4$tot)
+
+update_result_csv( name = "Mean IRR tiab screen",
+                   section = 5,
+                   value = round(mean.kappa, digits),
+                   print = TRUE )
+
+##### Full-Text Screening #####
+# calculate total ratings shared by each pair of reviewers to help with weighted average
+d5 = d5 %>% rowwise() %>%
+  mutate(tot = sum(A.Include..B.Include, A.Include..B.Exclude, A.Exclude..B.Include, A.Exclude..B.Exclude))
+
+mean.kappa = sum(d5$Cohen.s.Kappa * d5$tot) / sum(d5$tot)
+
+update_result_csv( name = "Mean IRR full text",
+                   section = 5,
+                   value = round(mean.kappa, digits),
+                   print = TRUE )
+
+
+
+############################### IRR FOR SUBJECTIVE QUALITY VARIABLES ###############################
+
+# look at pairwise interrater agreement
+qual.vars = c("sdb", "gen", "exch")
+
+for ( v in qual.vars ){
+  var.names = paste( v, c("DR", "JN", "MM"), sep = "." )
+  temp = d3[ , var.names]
+  
+  temp[ temp == "Unclear" ] = NA
+  
+  my_recode = function(x) recode_factor( x, Weak = "a.Weak", Medium = "b.Medium", Strong = "c.Strong" )
+  
+  temp2 = temp %>% mutate_at( .vars = var.names, funs(factor) ) %>%
+    mutate_at( .vars = var.names, funs(my_recode) )
+  
+  droplevels(temp2)
+  
+  levels(temp2[,1])
+  levels(temp2[,2])
+  levels(temp2[,3])
+
+  # weighted Cohen's kappa for ordinal data
+  # look at raters pairwise because of missing data
+  #  (otherwise does a CC analysis)
+  ( k12 = kappa2( temp[ , c(1,2) ], weight = "equal" )$value )
+  ( k13 = kappa2( temp[ , c(1,3) ], weight = "equal" )$value )
+  ( k23 = kappa2( temp[ , c(2,3) ], weight = "equal" )$value )
+  
+  ( mean.kappa = mean( c(k12, k13, k23) ) )
+  
+  update_result_csv( name = paste("Mean IRR ", v, sep=""),
+                     section = 5,
+                     value = round(mean.kappa, digits),
+                     print = TRUE )
+}
+
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+#                              6. SMALL MISCELLANIA            
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+
+# for Introduction
+# total animals consumed per day, per capita in each country
+ds$tot = rowSums(ds[,-1])
+
+# sanity check based on their stat on page 252
+expect_equal( round(ds$tot[ ds$country == "China" ], 1), 2.4 )
+
+# total animals consumed per human lifetime
+# assume human lifespans of 75 years, as in Scherer
+ds$per.lifetime = ds$tot * 75 * 365
+
+# don't pipe in these numbers because of need for comma
+round( min(ds$per.lifetime) )
+round( max(ds$per.lifetime) )
 
 
 
