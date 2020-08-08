@@ -2,8 +2,20 @@
 
 ################################# PREP ################################# 
 
+# hella working directories
+data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Data extraction"
+code.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Analysis/awr_analysis_git"
+results.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Analysis/Results from R"
+# we write results straight to Overleaf-connected DropBox folder for error-proofing
+overleaf.dir = "~/Dropbox/Apps/Overleaf/AWR (animal welfare interventions review)/R_objects"
+# directory with interrater reliability stats from Covidence
+irr.data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Literature search/Interrater reliability from Covidence"
+# directory with Scherer's per-capita animal deaths data
+scherer.data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Data extraction/Scherer animal slaughter data"
+
+
 # should we remove existing results file instead of overwriting individual entries? 
-start.res.from.scratch = FALSE
+start.res.from.scratch = TRUE
 # should we redo the time-consuming NPPhat bootstrapping?
 npphat.from.scratch = FALSE 
 # should we use the grateful package to scan and cite packages?
@@ -11,11 +23,14 @@ cite.packages.anew = FALSE
 
 if ( start.res.from.scratch == TRUE ) {
   setwd(results.dir)
-  system("rm stats_for_paper.csv")
+  if( "stats_for_paper.csv" %in% list.files() ) system("rm stats_for_paper.csv")
   setwd(overleaf.dir)
-  system("rm stats_for_paper.csv")
+  if( "stats_for_paper.csv" %in% list.files() ) system("rm stats_for_paper.csv")
 }
 
+# for some reason, checkpoint generates an error for metafor,
+#  so this one is exempt from the checkpoint installation
+library(metafor)
 
 # load packages
 # this will reinstall the versions of all packages as they existed on 
@@ -28,7 +43,7 @@ checkpoint("2020-02-12")
 detach("package:plyr", unload=TRUE)  # is a PITA if using dplyr
 library(dplyr)
 library(ICC)
-library(metafor)
+
 library(robumeta)
 library(MetaUtility)
 library(weightr)
@@ -45,16 +60,13 @@ library(tidyverse)
 library(readxl)
 library(grateful)
 
+# also save session info to text file
+setwd(results.dir)
+writeLines( capture.output(sessionInfo()),
+            paste( Sys.Date(), "sessionInfo.txt", sep="_" ) )
 
-data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Data extraction"
-code.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Analysis/awr_analysis_git"
-results.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Analysis/Results from R"
-# we write results straight to Overleaf-connected DropBox folder for error-proofing
-overleaf.dir = "~/Dropbox/Apps/Overleaf/AWR (animal welfare interventions review)/R_objects"
-# directory with interrater reliability stats from Covidence
-irr.data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Literature search/Interrater reliability from Covidence"
-# directory with Scherer's per-capita animal deaths data
-scherer.data.dir = "~/Dropbox/Personal computer/Independent studies/2019/AWR (animal welfare review meat consumption)/Linked to OSF (AWR)/Data extraction/Scherer animal slaughter data"
+
+
 
 # helper fns
 setwd(code.dir); source("helper_analysis.R")
@@ -63,9 +75,10 @@ setwd(code.dir); source("helper_analysis.R")
 digits = 2  # rounding
 pval.cutoff = 10^-4  # threshold for using "<"
 options(scipen=999)  # disable scientific notation
+boot.reps = 2000
 
 
-##### Read In Datasets #####
+##### Read In The Main Meta-Analytic Datasets #####
 
 # prepped dataset
 setwd(data.dir)
@@ -87,6 +100,9 @@ d$n.paper = as.numeric( as.character(d$n.paper) )
 # 1 row per article instead of per point estimate
 d.arts = d[ !duplicated(d$authoryear), ]
 
+
+##### Read In Other Datasets for Misc Purposes #####
+
 # for counting hopeless studies
 setwd(data.dir)
 # NOTE: this step will break if cell values are hyphenated! 
@@ -100,6 +116,14 @@ d2 = d2 %>% filter(!is.na(`First author last name`))
 setwd(data.dir)
 setwd("Dual review of quality")
 d3 = read.csv("subjective_data_full_prepped.csv")
+
+# coders' datasets for intervention components
+# these are already in the dataset above, but the following allows assessment
+#  of interrater reliability
+setwd(data.dir)
+setwd("Dual review of intervention components")
+dd = read.csv("component_coding_dr_prepped.csv")
+dm = read.csv("component_coding_mm_prepped.csv")
 
 # interrater reliability stats from Covidence
 setwd(irr.data.dir)
@@ -248,7 +272,7 @@ update_result_csv( name = "Number estimates hopeless",
 
 ################################# TABLE 2 (INDIVIDUAL STUDY CHARACTERISTICS) #################################
 
-# MM audited 2020-2-1
+# MM audited 2020-8-7
 
 t = table1_add_row( x = d$country,
                     var.header = "Country",  # variable name to use in table
@@ -261,6 +285,19 @@ t = table1_add_row( x = d$perc.male,
                     type = "cont",
                     countNA = TRUE,
                     .tab1 = t )
+
+t = table1_add_row( x = d$age,
+                    var.header = "Average age",  # variable name to use in table
+                    type = "cont",
+                    countNA = TRUE,
+                    .tab1 = t )
+
+t = table1_add_row( x = d$students,
+                    var.header = "Subjects' student status",  # variable name to use in table
+                    type = "cat",
+                    countNA = TRUE,
+                    .tab1 = t )
+
 
 t = table1_add_row( x = d$x.has.text,
                     var.header = "Intervention had text",  # variable name to use in table
@@ -281,9 +318,6 @@ t = table1_add_row( x = d$x.suffer,
                     .tab1 = t )
 
 
-
-
-
 t = table1_add_row( x = d$x.mind.attr,
                     var.header = "Intervention used mind attribution",  # variable name to use in table
                     type = "bin01",
@@ -298,14 +332,14 @@ t = table1_add_row( x = d$x.soc.norm,
 
 
 t = table1_add_row( x = d$x.id.victim,
-                    var.header = "Intervention had identifiable victim",  # variable name to use in table
+                    var.header = "Intervention identified a named victim",  # variable name to use in table
                     type = "bin01",
                     countNA = TRUE,
                     .tab1 = t )
 
 
-t = table1_add_row( x = d$x.soc.norm,
-                    var.header = "Intervention used social norms",  # variable name to use in table
+t = table1_add_row( x = d$x.pets,
+                    var.header = "Intervention depicted pets",  # variable name to use in table
                     type = "bin01",
                     countNA = TRUE,
                     .tab1 = t )
@@ -315,9 +349,6 @@ t = table1_add_row( x = d$x.impl,
                     type = "bin01",
                     countNA = TRUE,
                     .tab1 = t )
-
-
-
 
 t = table1_add_row( x = d$x.pure.animals,
                     var.header = "Intervention was animal welfare only",  # variable name to use in table
@@ -367,16 +398,45 @@ write.csv( t, "study_char_table.csv", row.names = FALSE )
 
 
 
+################################# SUBJECT CHARACTERISTICS FOR IN-TEXT REPORTING #################################
 
-################################# SUBJECT CHARACTERISTICS #################################
+# MM audited 2020-8-7
 
-# MM audited 2020-2-1
-
-# interventions containing text
 update_result_csv( name = "Median perc male",
                    section = 0,
                    value = round( median(d$perc.male, na.rm=TRUE), 0 ),
                    print = FALSE )
+
+update_result_csv( name = "Median avg age",
+                   section = 0,
+                   value = round( median(d$age, na.rm=TRUE), 1 ),
+                   print = FALSE )
+
+# student status
+update_result_csv( name = "Perc any undergrad",
+                   section = 0,
+                   value = round( 100 * percTRUE_incl_NA(d$students %in% c("General undergraduates", "Social sciences undergraduates") ) ),
+                   print = FALSE )
+
+update_result_csv( name = "k social undergrad",
+                   section = 0,
+                   value = sum( d$students == "Social sciences undergraduates" ),
+                   print = FALSE )
+
+update_result_csv( name = "Perc social undergrad",
+                   section = 0,
+                   value = round( 100 * percTRUE_incl_NA(d$students == "Social sciences undergraduates" ) ),
+                   print = FALSE )
+
+update_result_csv( name = "Perc not undergrad",
+                   section = 0,
+                   value = round( 100 * percTRUE_incl_NA(d$students == "No" ) ),
+                   print = TRUE )
+
+update_result_csv( name = "Perc student mixed",
+                   section = 0,
+                   value = round( 100 * percTRUE_incl_NA(d$students == "Mixed" ) ),
+                   print = TRUE )
 
 
 
@@ -401,6 +461,35 @@ update_result_csv( name = "Perc interventions graphic",
                    section = 0,
                    value = round( 100 * percTRUE_incl_NA(d$x.suffer) ),
                    print = FALSE )
+
+
+
+# subjective intervention components
+update_result_csv( name = "Perc interventions mind attr",
+                   section = 0,
+                   value = round( 100 * percTRUE_incl_NA(d$x.mind.attr) ),
+                   print = FALSE )
+
+update_result_csv( name = "Perc interventions soc norms",
+                   section = 0,
+                   value = round( 100 * percTRUE_incl_NA(d$x.soc.norm) ),
+                   print = FALSE )
+
+update_result_csv( name = "Perc interventions pets",
+                   section = 0,
+                   value = round( 100 * percTRUE_incl_NA(d$x.pets) ),
+                   print = FALSE )
+
+update_result_csv( name = "Perc interventions impl",
+                   section = 0,
+                   value = round( 100 * percTRUE_incl_NA(d$x.impl) ),
+                   print = FALSE )
+
+update_result_csv( name = "Perc interventions ID victim",
+                   section = 0,
+                   value = round( 100 * percTRUE_incl_NA(d$x.id.victim) ),
+                   print = TRUE )
+
 
 # interventions purely animal welfare
 update_result_csv( name = "Perc interventions pure",
@@ -518,10 +607,8 @@ update_result_csv( name = "k Y interpret absolute",
 ##### Make High-Quality Variable #####
 # how many meet bar of high quality?
 d = d %>% mutate( hi.qual = (randomized == TRUE) & 
-                    #qual.y.prox %in% c("Self-reported", "Actual behavior") &
                     qual.exch %in% c("a.Low", "b.Medium") &
                     qual.sdb %in% c("a.Low", "b.Medium") &  # this is the killer
-                    #qual.gen %in% c("a.Low", "b.Medium") &
                     !is.na(qual.missing) & qual.missing < 15 )   # reducing this to 5 doesn't change number of studies
 # which are high-quality?
 table(d$hi.qual)
@@ -666,6 +753,10 @@ update_result_csv( name = "Overall muhat RR lo",
                    section = 1,
                    value = round( exp(mu.lo), digits ),
                    print = FALSE )
+update_result_csv( name = "Overall muhat RR-1 lo",
+                   section = 1,
+                   value = round( 100 * (exp(mu.lo) - 1), 0 ),
+                   print = FALSE )
 update_result_csv( name = "Overall muhat RR hi",
                    section = 1,
                    value = round( exp(mu.hi), digits ),
@@ -725,7 +816,6 @@ setwd(overleaf.dir)
 ggsave( "ensemble_density.pdf",
         width = 8,
         height = 6 )
-
 
 
 
@@ -867,11 +957,9 @@ ggsave( "forest.pdf",
         height = 12 )
 
 
-################################# NPPHAT :D #################################
+################################# PERCENTAGE MEANINGFULLY STRONG EFFECTS #################################
 
 # MM audited 2020-1-2
-# ~~ but rerun the sanity check after running NPPhat again with larger dataset
-
 
 if (npphat.from.scratch == TRUE) {
   ##### Make Plotting Dataframe #####
@@ -901,7 +989,7 @@ if (npphat.from.scratch == TRUE) {
                        yi.name = "logRR",
                        vi.name = "varlogRR",
                        dat = d,
-                       R = 2000 ) )
+                       R = boot.reps ) )
   
   temp$q = res.short$q
   temp$Est = 100*temp$Est
@@ -911,7 +999,7 @@ if (npphat.from.scratch == TRUE) {
   
   # # NOT USED?
   # # turn into percentage
-  res$Est = 100*res$Est.x
+  res$Est = 100*res$est.x
   res$lo = 100*res$lo
   res$hi = 100*res$hi
   
@@ -956,7 +1044,7 @@ ggplot( data = res,
 
 setwd(results.dir)
 ggsave( "npphat.pdf",
-        width = 8,
+        width = 9,
         height = 6 )
 
 setwd(overleaf.dir)
@@ -975,10 +1063,10 @@ Phat = prop_stronger( q = log(1),
                       dat = d,
                       yi.name = "logRR",
                       vi.name = "varlogRR",
-                      R = 2000 )
+                      R = boot.reps )
 update_result_csv( name = "Phat above 1",
                    section = 1,
-                   value = round( 100 * Phat$Est, 0 ),
+                   value = round( 100 * Phat$est, 0 ),
                    print = FALSE )
 update_result_csv( name = "Phat above 1 lo",
                    section = 1,
@@ -998,10 +1086,10 @@ Phat = prop_stronger( q = log(1.1),
                       yi.name = "logRR",
                       vi.name = "varlogRR",
                       dat = d,
-                      R = 2000 )
+                      R = boot.reps )
 update_result_csv( name = "Phat above 1.1",
                    section = 1,
-                   value = round( 100 * Phat$Est, 0 ),
+                   value = round( 100 * Phat$est, 0 ),
                    print = FALSE )
 update_result_csv( name = "Phat above 1.1 lo",
                    section = 1,
@@ -1021,10 +1109,10 @@ Phat = prop_stronger( q = log(1.2),
                       yi.name = "logRR",
                       vi.name = "varlogRR",
                       dat = d,
-                      R = 2000 )
+                      R = boot.reps )
 update_result_csv( name = "Phat above 1.2",
                    section = 1,
-                   value = round( 100 * Phat$Est, 0 ),
+                   value = round( 100 * Phat$est, 0 ),
                    print = FALSE )
 update_result_csv( name = "Phat above 1.2 lo",
                    section = 1,
@@ -1045,11 +1133,11 @@ Phat.below = prop_stronger( q = log(.9),
                             yi.name = "logRR",
                             vi.name = "varlogRR",
                             dat = d,
-                            R = 2000 )
+                            R = boot.reps )
 
 update_result_csv( name = "Phat below 0.9",
                    section = 1,
-                   value = round( 100*Phat.below$Est, 0 ),
+                   value = round( 100*Phat.below$est, 0 ),
                    print = FALSE )
 update_result_csv( name = "Phat below 0.9 lo",
                    section = 1,
@@ -1071,11 +1159,11 @@ Phat.below = prop_stronger( q = log(1),
                             yi.name = "logRR",
                             vi.name = "varlogRR",
                             dat = d,
-                            R = 2000 )
+                            R = boot.reps )
 
 update_result_csv( name = "Phat below 1",
                    section = 1,
-                   value = round( 100*Phat.below$Est, 0 ),
+                   value = round( 100*Phat.below$est, 0 ),
                    print = FALSE )
 update_result_csv( name = "Phat below 1 lo",
                    section = 1,
@@ -1125,7 +1213,8 @@ update_result_csv( name = "weightr mu pval",
                    print = FALSE )
 
 # sanity check for CI lower limit
-exp(0.2855 - 1.96*0.04209)
+# exp(0.2855 - 1.96*0.04209)
+
 
 ##### Worst-Case Meta-Analysis ######
 
@@ -1249,6 +1338,251 @@ significance_funnel2(yi = d$logRR[ d$published == 0 ],
                      vi = d$varlogRR[ d$published == 0 ] )
 
 
+################################# SOCIAL DESIRABILITY BIAS ################################# 
+
+# MM audited 2020-8-8
+
+##### Shapiro Normality Test #####
+# see if reasonable to use the parametric versions in JASA paper
+# normality a bit borderline, so will avoid parametric
+shapiro.test(d$ens)
+qqnorm(d$ens); qqline(d$ens)
+
+
+##### Calibrated That for Shifting Point Estimate to Null #####
+# reduce to less than 100*r% the proportion of effects above q
+B.vec = seq(1, 2, 0.01)
+
+That.est = That_causal_bt( original = d,
+                           indices = 1:nrow(d),  # don't bootstrap (keep original sample)
+                           .calib.name = "ens",
+                           .B.vec = B.vec,
+                           .estimand = "est" )
+
+update_result_csv( name = "SDB That-1 shift est to 1",
+                   section = 2,
+                   value = round( 100*(That.est-1), 0 ),
+                   print = TRUE )
+
+
+if (npphat.from.scratch == TRUE) {
+  
+  # CI for That
+  # reduce bootstrap reps here because takes forever (has to fit robumeta each time)
+  boot.res = suppressWarnings( boot( data = d,
+                                     parallel = "multicore",
+                                     R = 500, 
+                                     statistic = That_causal_bt,
+                                     # below are passed to fn above
+                                     .calib.name = "ens",
+                                     .B.vec = B.vec,
+                                     .estimand = "est" ) )
+  
+  bootCIs = boot.ci(boot.res,
+                    type="bca",
+                    conf = 0.95 )
+  
+  lo.bt = bootCIs$bca[4]
+  hi.bt = bootCIs$bca[5]
+  SE.bt = sd(boot.res$t)
+  
+  res = data.frame(est = That.est,
+                   lo = lo.bt, 
+                   hi = hi.bt)
+  
+  setwd(results.dir)
+  write.csv( res,
+             "That_shift_est_to_null.csv" )
+  
+} else {  # if not bootstrapping from scratch
+  
+  setwd(results.dir)
+  res = read.csv("That_shift_est_to_null.csv")
+}
+
+
+update_result_csv( name = "SDB That-1 shift est to 1",
+                   section = 2,
+                   value = round( 100*(res$est - 1), 0 ),
+                   print = FALSE )
+
+update_result_csv( name = "SDB That-1 lo shift est to 1",
+                   section = 2,
+                   value = round( 100*(res$lo - 1), 0 ),
+                   print = FALSE )
+
+update_result_csv( name = "SDB That-1 hi shift est to 1",
+                   section = 2,
+                   value = round( 100*(res$hi - 1), 0 ),
+                   print = TRUE )
+
+
+##### Calibrated That for Phat(RR>1.1) < 0.10 #####
+# now considering homogeneous bias
+# and to shift Phat(RR>1.1) to less than 10%
+
+# note: not looking at shifting CI to null because that would require homogeneous bias
+#  since heterogeneous bias affects tau^2 and therefore the CI limit
+
+q = log(1.1)
+r = 0.10
+
+That.p = That_causal_bt( original = d,
+                         indices = 1:nrow(d),  # don't bootstrap (keep original sample)
+                         .calib.name = "ens",
+                         .q = q,
+                         .r = r,
+                         .B.vec = B.vec,
+                         .tail = "above",
+                         .estimand = "Phat" )
+
+update_result_csv( name = "SDB That-1 shift est to 1",
+                   section = 2,
+                   value = round( 100*(That.p-1), 0 ),
+                   print = FALSE )
+
+
+if (npphat.from.scratch == TRUE) {
+  
+  # CI for That
+  boot.res = suppressWarnings( boot( data = d,
+                                     parallel = "multicore",
+                                     R = boot.reps, 
+                                     statistic = That_causal_bt,
+                                     # below are passed to fn above
+                                     .calib.name = "ens",
+                                     .q = q,
+                                     .r = r,
+                                     .B.vec = B.vec,
+                                     .tail = "above",
+                                     .estimand = "Phat" ) )
+  
+  bootCIs = boot.ci(boot.res,
+                    type="bca",
+                    conf = 0.95 )
+  
+  lo.bt = bootCIs$bca[4]
+  hi.bt = bootCIs$bca[5]
+  SE.bt = sd(boot.res$t)
+  
+  res = data.frame(est = That.p,
+                   lo = lo.bt, 
+                   hi = hi.bt)
+  
+  setwd(results.dir)
+  write.csv( res,
+             "That_shift_phat.csv" )
+  
+} else {  # if not bootstrapping from scratch
+  
+  setwd(results.dir)
+  res = read.csv("That_shift_phat.csv")
+}
+
+
+update_result_csv( name = "SDB That-1 shift phat",
+                   section = 2,
+                   value = round( 100*(res$est - 1), 0 ),
+                   print = FALSE )
+
+update_result_csv( name = "SDB That-1 lo shift phat",
+                   section = 2,
+                   value = round( 100*(res$lo - 1), 0 ),
+                   print = FALSE )
+
+update_result_csv( name = "SDB That-1 hi shift phat",
+                   section = 2,
+                   value = round( 100*(res$hi - 1), 0 ),
+                   print = TRUE )
+
+
+##### Plot Homogeneous Bias Factor vs. Phat(RR>1.1) #####
+# not in paper
+if ( npphat.from.scratch == TRUE ){
+  
+  B.vec = seq( 1, 1.5, 0.01 )
+  Bl = as.list(B.vec)
+  
+  # again pass threshold and calibrated estimates on log-RR scale
+  Phat.t.vec = lapply( Bl,
+                       FUN = function(B) Phat_causal( .q = q, 
+                                                      .B = B,
+                                                      .calib = d$ens,
+                                                      .tail = "above",
+                                                      .give.CI = FALSE,
+                                                      .dat = dat,
+                                                      .calib.name = "calib") )
+  
+  resb = data.frame( B = B.vec,
+                     Est = unlist(Phat.t.vec) )
+  
+  # selective bootstrapping
+  # look at just the values of B at which Phat jumps
+  #  this will not exceed the number of point estimates in the meta-analysis
+  res.short = resb[ diff(resb$Est) != 0, ]
+  
+  
+  # bootstrap a CI for each entry in res.short
+  library(boot)
+  temp = res.short %>% rowwise() %>%
+    do( Phat_causal( .q = q, 
+                     .B = .$B,
+                     .calib = d$ens,
+                     .tail = "above",
+                     
+                     .give.CI = TRUE,
+                     .dat = d,
+                     .R = boot.reps,
+                     .calib.name = "ens") )
+  
+  
+  # merge this with the full-length res dataframe, merging by Phat itself
+  resb = merge( resb, temp, by.x = "Est", by.y = "Est")
+  
+  # sanity check for That for shifting Phat(RR>1.1) to 10%
+  resb$Est[ resb$B == 1.5]
+  resb$Est[ resb$B == 1.4]
+  resb$Est[ resb$B == 1.37]
+  resb$Est[ resb$B == 1.3]
+  
+  
+  # make plot
+  # black dashed line: That/Ghat
+  # red dashed line: proportion threshold r
+  p = ggplot( data = resb,
+              aes( x = B,
+                   y = Est ) ) +
+    theme_bw() +
+    
+    # proportion "r" line
+    geom_hline( yintercept = .10, 
+                lty = 2,
+                color = "red" ) +
+    
+    # That line
+    geom_vline( xintercept = That.p,
+                lty = 2,
+                color = "black" ) +
+    
+    scale_y_continuous( limits=c(0,1), breaks=seq(0, 1, .1)) +
+    scale_x_continuous( breaks = seq(1, 1.5, .1) ) +
+    geom_line(lwd=1.2) +
+    
+    xlab("Hypothetical multiplicative bias in all studies (RR scale)") +
+    ylab( paste( "Estimated proportion of studies with population causal RR >", exp(q) ) ) +
+    
+    geom_ribbon( aes(ymin=resb$lo, ymax=resb$hi), alpha=0.15, fill = "black" )
+  
+  setwd(results.dir)
+  ggsave( "phat_causal.pdf",
+          width = 9,
+          height = 6 )
+  setwd(overleaf.dir)
+  ggsave( "phat_causal.pdf",
+          width = 9,
+          height = 6 )
+  
+}
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 #                              3. SUBSET ANALYSES            
@@ -1338,23 +1672,30 @@ write.csv(resE, "subsets_table.csv", row.names = FALSE)
 # note: for some subsets, tau = 0, hence 0 estimate for certain Phats and inestimable CI
 
 
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 #                              4. MODERATOR ANALYSES (MAIN ONES)           
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
-################################# SFIG: CORRELATIONS AMONG MODERATORS #################################
+################################# SFIG: CORRELATIONS AMONG ALL MODERATORS #################################
 
-# MM audited 2020-2-2
+# MM audited 2020-8-7
 
-vars = c(
-  "x.has.text",
-  "x.has.visuals",
-  "x.suffer",
-  "x.makes.request",
-  "x.long",
-  "y.long.lag",
-  "perc.male.10"
-)
+#includes all moderators from both meta-regression models
+vars = c( "x.has.text",
+          "x.has.visuals",
+          "x.suffer",
+          "x.mind.attr",
+          "x.soc.norm",
+          "x.id.victim",
+          "x.pets",
+          "x.impl",
+          "x.makes.request",
+          "x.long",
+          "y.long.lag",
+          "perc.male.10",
+          "age" )
+
 
 corrs = d %>% select(vars) %>%
   correlate( use = "pairwise.complete.obs" ) %>%
@@ -1367,18 +1708,30 @@ corrs$x = dplyr::recode( corrs$x,
                          "x.has.text" = "Text",
                          "x.has.visuals" = "Visuals",
                          "x.suffer" = "Graphic",
+                         "x.mind.attr" = "Mind attribution",
+                         "x.soc.norm" = "Social norms",
+                         "x.id.victim" = "ID victim",
+                         "x.pets" = "Pets",
+                         "x.impl" = "Implementation suggestions",
                          "x.makes.request" = "Makes request",
                          "x.long" = "Intervention >5 min",
-                         "y.long.lag" = "Follow-up >7 days",
-                         "perc.male.10" = "Male" )
+                         "y.long.lag" = "Follow-up >=7 days",
+                         "perc.male.10" = "Male",
+                         "age" = "Age")
 corrs$y = dplyr::recode( corrs$y,
                          "x.has.text" = "Text",
                          "x.has.visuals" = "Visuals",
                          "x.suffer" = "Graphic",
+                         "x.mind.attr" = "Mind attribution",
+                         "x.soc.norm" = "Social norms",
+                         "x.id.victim" = "ID victim",
+                         "x.pets" = "Pets",
+                         "x.impl" = "Implementation suggestions",
                          "x.makes.request" = "Makes request",
                          "x.long" = "Intervention >5 min",
-                         "y.long.lag" = "Follow-up >7 days",
-                         "perc.male.10" = "Male" )
+                         "y.long.lag" = "Follow-up >=7 days",
+                         "perc.male.10" = "Male",
+                         "age" = "Age")
 corrs$r = round(corrs$r, 2)
 
 corrs = corrs[ !is.na(corrs$r), ]
@@ -1388,6 +1741,7 @@ setwd(results.dir)
 setwd("Tables to prettify")
 write.csv(corrs, "moderator_cormat.csv")
 
+# this is what I actually used since the table is in the LaTeX supplement:
 print( xtable(corrs), include.rownames = FALSE )
 
 
@@ -1398,96 +1752,149 @@ print( xtable(corrs), include.rownames = FALSE )
 
 # can't include country; causes sparsity and eigendecomposition 
 #  problems because has too much missing data
-moderators = c( "x.has.text",
-               "x.has.visuals",
-               "x.suffer",
-               "x.rec",
-               "x.long",
-               "y.long.lag",
-               "perc.male.10" )
 
-linpred.string = paste( moderators, collapse=" + ")
-string = paste( "logRR ~ ", linpred.string, collapse = "")
-
-( meta = robu( eval( parse( text = string ) ), 
-               data = d, 
-               studynum = as.factor(authoryear),
-               var.eff.size = varlogRR,
-               modelweights = "HIER",
-               small = TRUE) )
-
-est = meta$b.r
-t2 = meta$mod_info$tau.sq
-mu.lo = meta$reg_table$CI.L
-mu.hi = meta$reg_table$CI.U
-mu.se = meta$reg_table$SE
-pval = meta$reg_table$prob
-V = meta$VR.r  # variance-covariance matrix
-
-# report tau in this model
-update_result_csv( name = "Meta-regression tau",
-                   section = 4,
-                   value = round( sqrt(t2), 2 ),
-                   print = TRUE )
+mod.sets = list( c( "x.has.text",
+                    "x.has.visuals",
+                    "x.suffer",
+                    "x.rec",
+                    "x.long",
+                    "y.long.lag",
+                    "perc.male.10",
+                    "age.5" ),
+                 
+                 c( # omit x.has.text due to collinearity
+                   "x.has.visuals",
+                   "x.suffer",
+                   "x.mind.attr",
+                   "x.soc.norm",
+                   "x.id.victim",
+                   "x.pets",
+                   "x.impl",
+                   "x.rec",
+                   "x.long",
+                   "y.long.lag",
+                   "perc.male.10",
+                   "age.5" ) )
 
 
-# estimates for text
-ests = round( exp(est), 2 )
-pvals2 = format_stat(pval)
-# get rid of scientific notation; instead use more digits
-pvals2[ pval < 0.01 ] = round( pval[ pval < 0.01 ], 3 )
+for ( i in 1:length(mod.sets) ) {
+  moderators = mod.sets[[i]]
+  
+  linpred.string = paste( moderators, collapse=" + ")
+  string = paste( "logRR ~ ", linpred.string, collapse = "")
+  
+  ( meta = robu( eval( parse( text = string ) ), 
+                 data = d, 
+                 studynum = as.factor(authoryear),
+                 var.eff.size = varlogRR,
+                 modelweights = "HIER",
+                 small = TRUE) )
+  
+  est = meta$b.r
+  t2 = meta$mod_info$tau.sq
+  mu.lo = meta$reg_table$CI.L
+  mu.hi = meta$reg_table$CI.U
+  mu.se = meta$reg_table$SE
+  pval = meta$reg_table$prob
+  V = meta$VR.r  # variance-covariance matrix
+  
+  # estimates for text
+  ests = round( exp(est), 2 )
+  pvals2 = format_stat(pval)
+  # get rid of scientific notation; instead use more digits
+  pvals2[ pval < 0.01 ] = round( pval[ pval < 0.01 ], 3 )
+  
+  
+  # only for main meta-regression
+  if ( i == 1 ) {
+    # report tau in this model
+    update_result_csv( name = "Meta-regression tau",
+                       section = 4,
+                       value = round( sqrt(t2), 2 ),
+                       print = TRUE )
 
-update_result_csv( name = "k in meta-regression",
-                   section = 4,
-                   value = nrow(meta$data.full),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression est", meta$labels ),
-                   section = 4,
-                   value = ests,
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression lo", meta$labels ),
-                   section = 4,
-                   value = format_stat( exp(mu.lo) ),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression hi", meta$labels ),
-                   section = 4,
-                   value = format_stat( exp(mu.hi) ),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression pval", meta$labels ),
-                   section = 4,
-                   value = pvals2,
-                   print = TRUE )
+    update_result_csv( name = "k in meta-regression",
+                       section = 4,
+                       value = nrow(meta$data.full),
+                       print = TRUE )
+    update_result_csv( name = paste( "Meta-regression est", meta$labels ),
+                       section = 4,
+                       value = ests,
+                       print = TRUE )
+    update_result_csv( name = paste( "Meta-regression lo", meta$labels ),
+                       section = 4,
+                       value = format_stat( exp(mu.lo) ),
+                       print = TRUE )
+    update_result_csv( name = paste( "Meta-regression hi", meta$labels ),
+                       section = 4,
+                       value = format_stat( exp(mu.hi) ),
+                       print = TRUE )
+    update_result_csv( name = paste( "Meta-regression pval", meta$labels ),
+                       section = 4,
+                       value = pvals2,
+                       print = TRUE )
+    
+    # for reporting in the Discussion in terms of percent more effective
+    update_result_csv( name = paste( "Meta-regression go vegan RR-1" ),
+                       section = 4,
+                       value = 100*( ests[ meta$labels == "x.recd.Go.vegan"] - 1),
+                       print = TRUE )
+    update_result_csv( name = paste( "Meta-regression graphic RR-1" ),
+                       section = 4,
+                       value = 100*( ests[ meta$labels == "x.suffer"] - 1),
+                       print = TRUE )
+    update_result_csv( name = paste( "Meta-regression long lag RR-1" ),
+                       section = 4,
+                       value = 100*( 1 - ests[ meta$labels == "y.long.lagTRUE"] ),
+                       print = TRUE )
+    
+  }  # end "if i == 1" (main meta-regression only)
+  
+  if ( i == 2 ){
+    update_result_csv( name = "k in meta-regression2",
+                       section = 4,
+                       value = nrow(meta$data.full),
+                       print = TRUE )
+    
+    update_result_csv( name = paste( "Meta-regression est x.impl" ),
+                       section = 4,
+                       value = round( exp(meta$b.r[meta$labels == "x.impl"]), 2 ),
+                       print = TRUE )
+    
+    update_result_csv( name = paste( "Meta-regression lo x.impl" ),
+                       section = 4,
+                       value = round( exp(mu.lo[meta$labels == "x.impl"]), 2 ),
+                       print = TRUE )
+    
+    update_result_csv( name = paste( "Meta-regression hi x.impl" ),
+                       section = 4,
+                       value = round( exp(mu.hi[meta$labels == "x.impl"]), 2 ),
+                       print = TRUE )
+    
+    update_result_csv( name = paste( "Meta-regression pval x.impl" ),
+                       section = 4,
+                       value = pvals2[meta$labels == "x.impl"],
+                       print = TRUE )
+    
+  }
+  
 
-# for reporting in the Discussion in terms of percent more effective
-update_result_csv( name = paste( "Meta-regression go vegan RR-1" ),
-                   section = 4,
-                   value = 100*( ests[ meta$labels == "x.recd.Go.vegan"] - 1),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression graphic RR-1" ),
-                   section = 4,
-                   value = 100*( ests[ meta$labels == "x.suffer"] - 1),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression long lag RR-1" ),
-                   section = 4,
-                   value = 100*( 1 - ests[ meta$labels == "y.long.lagTRUE"] ),
-                   print = TRUE )
+  ##### Meta-Regression Table #####
+  CIs = format_CI( exp( mu.lo ),
+                   exp( mu.hi ) )
+  temp = data.frame( Moderator = meta$labels, 
+                     EstCI = paste( ests, CIs, sep = " " ),
+                     Pval = pvals2 )
+  
+  # save results
+  setwd(results.dir)
+  setwd("Tables to prettify")
+  
+  if ( i == 1 ) write.csv(temp, "meta_regression1_table.csv", row.names = FALSE)
+  if ( i == 2 ) write.csv(temp, "meta_regression2_table.csv", row.names = FALSE)
+}
 
 
-# studies included in meta-regression
-d.mr = d %>% filter( complete.cases(d[,moderators]) )
-
-
-##### Meta-Regression Table #####
-CIs = format_CI( exp( mu.lo ),
-                 exp( mu.hi ) )
-temp = data.frame( Moderator = meta$labels, 
-                   EstCI = paste( ests, CIs, sep = " " ),
-                   Pval = pvals2 )
-
-# save results
-setwd(results.dir)
-setwd("Tables to prettify")
-write.csv(temp, "meta_regression_table.csv", row.names = FALSE)
 
 
 ################################# CONTINUOUS MODERATOR PLOTS #################################
@@ -1498,13 +1905,18 @@ qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
 col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
 pie(rep(1,n), col=sample(col_vector, n))
 
-N = 100; M = 1000
+#N = 100; M = 1000
 good.shapes = c(1:25,33:127)
-
 
 ##### SFig4: Time Exposed to Intervention #####
 temp = dp %>% filter( !is.na(x.min.exposed) & !is.na(ens) )
 temp = droplevels(temp)
+
+# choose good limits
+exp(min(temp$ens))
+exp(max(temp$ens))
+max(temp$x.min.exposed)
+
 ggplot( data = temp, aes( x = x.min.exposed,
                         y = exp(ens),
                         color = authoryear,
@@ -1516,8 +1928,8 @@ ggplot( data = temp, aes( x = x.min.exposed,
   # null
   geom_hline(yintercept = 1, lty = 2) +
 
-  scale_y_continuous( limits = c(.8, 1.8),
-                      breaks = seq(.8, 1.8, .1) ) +
+  scale_y_continuous( limits = c(.8, 2.5),
+                      breaks = seq(.8, 2.5, .1) ) +
   scale_x_log10( limits = c(1,100),
                  breaks = c(1,5,10,30,100)) +
   
@@ -1539,6 +1951,13 @@ ggsave( "continuous_x_duration.pdf",
 ##### SFig5: Time Lag Between Intervention and Outcome Measurement #####
 temp = dp %>% filter( !is.na(y.lag.days) & !is.na(ens) )
 temp = droplevels(temp)
+
+# choose good limits
+exp(min(temp$ens))
+exp(max(temp$ens))
+min(temp$y.lag.days)
+max(temp$y.lag.days)
+
 ggplot( data = temp, aes( x = y.lag.days,
                         y = exp(ens),
                         color = authoryear,
@@ -1552,10 +1971,10 @@ ggplot( data = temp, aes( x = y.lag.days,
   # null
   geom_hline(yintercept = 1, lty = 2) +
   
-  scale_x_continuous(limits = c(0,100),
-                     breaks = seq(0,100,10)) +
-  scale_y_continuous( limits = c(.8, 1.8),
-                      breaks = seq(.8, 1.8, .1) ) +
+  scale_x_continuous(limits = c(0,130),
+                     breaks = seq(0,130,10)) +
+  scale_y_continuous( limits = c(.8, 2.5),
+                      breaks = seq(.8, 2.5, .1) ) +
   
   scale_shape_manual(values = good.shapes,
                      name = "Study") +
@@ -1574,163 +1993,51 @@ ggsave( "continuous_time_lag.pdf",
         height = 6 )
 
 
+##### SFig6: Average Age #####
 
+temp = dp %>% filter( !is.na(age) & !is.na(ens) )
+temp = droplevels(temp)
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
-#                              4.5. INTERVENTION COMPONENT MODERATOSR ANALYSES            
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+# choose good limits
+exp(min(temp$ens))
+exp(max(temp$ens))
+min(temp$age)
+max(temp$age)
 
-# BM
-
-# ~~~ temp
-# for now, just use my own spreadsheet 
-
-################################# SFIG: CORRELATIONS AMONG MODERATORS #################################
-
-# MM audited 2020-2-2
-
-vars = c(
-  "x.has.text",
-  "x.has.visuals",
-  "x.suffer",
-  "x.makes.request",
-  "x.long",
-  "y.long.lag",
-  "perc.male.10"
-)
-
-corrs = d %>% select(vars) %>%
-  correlate( use = "pairwise.complete.obs" ) %>%
-  stretch() %>%
-  arrange(desc(r)) %>%
-  group_by(r) %>%
-  filter(row_number()==1)
-
-corrs$x = dplyr::recode( corrs$x,
-                         "x.has.text" = "Text",
-                         "x.has.visuals" = "Visuals",
-                         "x.suffer" = "Graphic",
-                         "x.makes.request" = "Makes request",
-                         "x.long" = "Intervention >5 min",
-                         "y.long.lag" = "Follow-up >7 days",
-                         "perc.male.10" = "Male" )
-corrs$y = dplyr::recode( corrs$y,
-                         "x.has.text" = "Text",
-                         "x.has.visuals" = "Visuals",
-                         "x.suffer" = "Graphic",
-                         "x.makes.request" = "Makes request",
-                         "x.long" = "Intervention >5 min",
-                         "y.long.lag" = "Follow-up >7 days",
-                         "perc.male.10" = "Male" )
-corrs$r = round(corrs$r, 2)
-
-corrs = corrs[ !is.na(corrs$r), ]
-View(corrs)
+ggplot( data = temp, aes( x = age,
+                          y = exp(ens),
+                          color = authoryear,
+                          shape = authoryear) ) + 
+  geom_point(size = 4,
+             alpha = 1) + 
+  
+  xlab("Average age of subjects") +
+  ylab("Calibrated estimate (RR)") +
+  
+  # null
+  geom_hline(yintercept = 1, lty = 2) +
+  
+  scale_x_continuous(limits = c(8,46),
+                     breaks = seq(8,46,2)) +
+  scale_y_continuous( limits = c(.8, 2.5),
+                      breaks = seq(.8, 2.5, .1) ) +
+  
+  scale_shape_manual(values = good.shapes,
+                     name = "Study") +
+  labs(color = "Study") +
+  #scale_colour_brewer(palette = "Set1") +
+  #scale_color_manual(values = col_vector) +
+  theme_bw()
 
 setwd(results.dir)
-setwd("Tables to prettify")
-write.csv(corrs, "moderator_cormat.csv")
+ggsave( "continuous_age.pdf",
+        width = 10,
+        height = 6 )
+setwd(overleaf.dir)
+ggsave( "continuous_age.pdf",
+        width = 10,
+        height = 6 )
 
-print( xtable(corrs), include.rownames = FALSE )
-
-
-
-################################# META-REGRESSION 1: WITHOUT INTERVENTION COMPONENTS #################################
-
-# MM audited 2020-2-2
-
-# can't include country; causes sparsity and eigendecomposition 
-#  problems because has too much missing data
-moderators = c( "x.has.text",
-                "x.has.visuals",
-                "x.suffer",
-                "x.rec",
-                "x.long",
-                "y.long.lag",
-                "perc.male.10" )
-
-linpred.string = paste( moderators, collapse=" + ")
-string = paste( "logRR ~ ", linpred.string, collapse = "")
-
-( meta = robu( eval( parse( text = string ) ), 
-               data = d, 
-               studynum = as.factor(authoryear),
-               var.eff.size = varlogRR,
-               modelweights = "HIER",
-               small = TRUE) )
-
-est = meta$b.r
-t2 = meta$mod_info$tau.sq
-mu.lo = meta$reg_table$CI.L
-mu.hi = meta$reg_table$CI.U
-mu.se = meta$reg_table$SE
-pval = meta$reg_table$prob
-V = meta$VR.r  # variance-covariance matrix
-
-# report tau in this model
-update_result_csv( name = "Meta-regression tau",
-                   section = 4,
-                   value = round( sqrt(t2), 2 ),
-                   print = TRUE )
-
-
-# estimates for text
-ests = round( exp(est), 2 )
-pvals2 = format_stat(pval)
-# get rid of scientific notation; instead use more digits
-pvals2[ pval < 0.01 ] = round( pval[ pval < 0.01 ], 3 )
-
-update_result_csv( name = "k in meta-regression",
-                   section = 4,
-                   value = nrow(meta$data.full),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression est", meta$labels ),
-                   section = 4,
-                   value = ests,
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression lo", meta$labels ),
-                   section = 4,
-                   value = format_stat( exp(mu.lo) ),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression hi", meta$labels ),
-                   section = 4,
-                   value = format_stat( exp(mu.hi) ),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression pval", meta$labels ),
-                   section = 4,
-                   value = pvals2,
-                   print = TRUE )
-
-# for reporting in the Discussion in terms of percent more effective
-update_result_csv( name = paste( "Meta-regression go vegan RR-1" ),
-                   section = 4,
-                   value = 100*( ests[ meta$labels == "x.recd.Go.vegan"] - 1),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression graphic RR-1" ),
-                   section = 4,
-                   value = 100*( ests[ meta$labels == "x.suffer"] - 1),
-                   print = TRUE )
-update_result_csv( name = paste( "Meta-regression long lag RR-1" ),
-                   section = 4,
-                   value = 100*( 1 - ests[ meta$labels == "y.long.lagTRUE"] ),
-                   print = TRUE )
-
-
-# studies included in meta-regression
-d.mr = d %>% filter( complete.cases(d[,moderators]) )
-
-
-##### Meta-Regression Table #####
-CIs = format_CI( exp( mu.lo ),
-                 exp( mu.hi ) )
-temp = data.frame( Moderator = meta$labels, 
-                   EstCI = paste( ests, CIs, sep = " " ),
-                   Pval = pvals2 )
-
-# save results
-setwd(results.dir)
-setwd("Tables to prettify")
-write.csv(temp, "meta_regression_table.csv", row.names = FALSE)
 
 
 
@@ -1740,8 +2047,6 @@ write.csv(temp, "meta_regression_table.csv", row.names = FALSE)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 ############################### IRR FOR ARTICLE INCLUSION ###############################
-
-# BM
 
 ##### Title/Abstract Screening #####
 # calculate total ratings shared by each pair of reviewers to help with weighted average
@@ -1766,7 +2071,6 @@ update_result_csv( name = "Mean IRR full text",
                    section = 5,
                    value = round(mean.kappa, digits),
                    print = TRUE )
-
 
 
 ############################### IRR FOR SUBJECTIVE QUALITY VARIABLES ###############################
@@ -1794,6 +2098,7 @@ for ( v in qual.vars ){
   # weighted Cohen's kappa for ordinal data
   # look at raters pairwise because of missing data
   #  (otherwise does a CC analysis)
+  # omits missing data listwise
   ( k12 = kappa2( temp[ , c(1,2) ], weight = "equal" )$value )
   ( k13 = kappa2( temp[ , c(1,3) ], weight = "equal" )$value )
   ( k23 = kappa2( temp[ , c(2,3) ], weight = "equal" )$value )
@@ -1805,6 +2110,29 @@ for ( v in qual.vars ){
                      value = round(mean.kappa, digits),
                      print = TRUE )
 }
+
+
+############################### IRR FOR INTERVENTION COMPONENTS ###############################
+
+vars = c("mind.attribution", "social.norms", "id.victim", "impl.suggest", "pets")
+
+for ( v in vars ){
+
+  # unweighted Cohen's kappa since these are binary
+  # omits missing data listwise, so throws out situations when one coder
+  #  thought they didn't have enough info to rate the component, but another thought they did
+  ( kap = kappa2( data.frame( dd[[v]], dm[[v]] ), weight = "unweighted" )$value )
+  
+  update_result_csv( name = paste("IRR ", v, sep=""),
+                     section = 5,
+                     value = round(kap, digits),
+                     print = TRUE )
+}
+
+
+
+
+
 
 
 
@@ -1826,7 +2154,4 @@ ds$per.lifetime = ds$tot * 75 * 365
 # don't pipe in these numbers because of need for comma
 round( min(ds$per.lifetime) )
 round( max(ds$per.lifetime) )
-
-
-
 

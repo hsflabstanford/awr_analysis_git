@@ -214,6 +214,150 @@ my_ens = function(yi,
 }
 
 
+################################ FOR TMIN REGARDING SOCIAL DESIRABILITY BIAS ################################
+
+###### Phat after shifting by bias factor B and using calibrated estimates #####
+Phat_causal = function( .q,
+                        .B,  # RR scale
+                        .calib, # assumed on log scale
+                        .tail,
+                        
+                        .give.CI = TRUE,
+                        .R = 2000,
+                        .dat = NA,
+                        .calib.name = NA ) {
+  
+  # confounding-adjusted calibrated estimates
+  # *** SPECIFIC TO THIS STUDY: assumes apparently causative case
+  calib.t = .calib - log(.B)
+  
+  # confounding-adjusted Phat
+  if ( .tail == "above" ) Phat.t = mean( calib.t > .q )
+  if ( .tail == "below" ) Phat.t = mean( calib.t < .q )
+  
+  if ( .give.CI == FALSE ) {
+    
+    return(Phat.t)
+    
+  } else {
+    
+    tryCatch({
+      boot.res = suppressWarnings( boot( data = .dat,
+                                         parallel = "multicore",
+                                         R = .R, 
+                                         statistic = Phat_causal_bt,
+                                         # below arguments are being passed to get_stat
+                                         .calib.name = .calib.name,
+                                         .q = .q,
+                                         .B = .B,
+                                         .tail = .tail ) )
+      
+      bootCIs = boot.ci(boot.res,
+                        type="bca",
+                        conf = 0.95 )
+      
+      lo.bt = bootCIs$bca[4]
+      hi.bt = bootCIs$bca[5]
+      SE.bt = sd(boot.res$t)
+      
+    }, error = function(err){
+      lo.bt <<- NA
+      hi.bt <<- NA
+      SE.bt <<- NA
+    } ) 
+    
+    return( data.frame( Est = Phat.t,
+                        SE = SE.bt,
+                        lo = lo.bt, 
+                        hi = hi.bt ) )
+  }
+}
+
+
+
+###### Simplified version of above for boot to call #####
+Phat_causal_bt = function( original,
+                           indices,
+                           .calib.name,
+                           .q,
+                           .B,  # RR scale
+                           .tail ) {
+  
+  b = original[indices,]
+  
+  phatb = Phat_causal( .q = .q, 
+                       .B = .B,
+                       .calib = b[[.calib.name]], 
+                       .tail = .tail,
+                       .give.CI = FALSE)
+  return(phatb)
+}
+
+
+
+##### That to shift point estimate to null or reduce Phat(>.q) to .r #####
+# .estimand: shift point estimate to null or reduce Phat(>.q) to .r?
+That_causal_bt = function( original,
+                           indices, 
+                           .calib.name,
+                           .q = NA,
+                           .r = NA,
+                           .B.vec,  # RR scale
+                           .tail = NA,
+                           .estimand) { 
+  
+  # # TEST ONLY
+  # original = d
+  # indices = 1:nrow(d)
+  # .calib.name = "ens"
+  # .q = log(1.1)
+  # .r = .10
+  # .B.vec = seq(1,2,.1)
+  # .tail = "above"
+  # .estimand = "est"
+  
+  b = original[indices,]
+  
+  Bl = as.list(.B.vec)
+  
+
+  if ( .estimand == "Phat" ) {
+    # calculate Phat for a vector of B
+    Phat.t.vec = unlist( lapply( Bl,
+                                 FUN = function(B) Phat_causal( .dat = b,
+                                                                .q = .q, 
+                                                                .B = B,
+                                                                .calib = b[[.calib.name]],
+                                                                .tail = .tail,
+                                                                .give.CI = FALSE ) ) )
+    
+    # That is smallest B such that Phat is less than or equal to .r
+    That = sort( .B.vec[ Phat.t.vec <= .r ] )[1]
+  }
+  
+  if ( .estimand == "est" ) {
+    
+    est.t.vec = unlist( lapply( Bl,
+                                FUN = function(B) {
+                                  # back-shift the estimates by the log-bias factor
+                                  b$ens.adj = b$ens - log(B)
+                                  as.numeric( robu( ens.adj ~ 1,
+                                                    data = b,
+                                                    studynum = as.factor(authoryear),
+                                                    var.eff.size = varlogRR,
+                                                    modelweights = "HIER",
+                                                    small = TRUE)$b.r )
+                                  } ) )
+    
+    # That is the smallest B such that the estimate (log scale) is less than 
+    #  or equal to the null
+    That = sort( .B.vec[ est.t.vec <= 0 ] )[1]
+  }
+  return(That)
+}
+
+
+
 
 ################################ MISCELLANEOUS ################################
 
@@ -237,34 +381,34 @@ update_result_csv = function( name,
   
   
   if ( "stats_for_paper.csv" %in% list.files() ) {
-    res = read.csv( "stats_for_paper.csv",
+    .res = read.csv( "stats_for_paper.csv",
                     stringsAsFactors = FALSE,
                     colClasses = rep("character", 3 ) )
     
     # if this entry is already in the results file, overwrite the
     #  old one
-    if ( all(name %in% res$name) ) res[ res$name %in% name, ] = new.rows
-    else res = rbind(res, new.rows)
+    if ( all(name %in% .res$name) ) .res[ .res$name %in% name, ] = new.rows
+    else .res = rbind(.res, new.rows)
   }
   
   if ( !"stats_for_paper.csv" %in% list.files() ) {
-    res = new.rows
+    .res = new.rows
   }
   
-  write.csv( res, 
+  write.csv( .res, 
              "stats_for_paper.csv",
              row.names = FALSE,
              quote = FALSE )
   
   # also write to Overleaf
   setwd(overleaf.dir)
-  write.csv( res, 
+  write.csv( .res, 
              "stats_for_paper.csv",
              row.names = FALSE,
              quote = FALSE )
   
   if ( print == TRUE ) {
-    View(res)
+    View(.res)
   }
 }
 
@@ -275,13 +419,13 @@ update_result_csv = function( name,
 # countNA: should we count NA as its own category for cat and bin01?
 # tab1: the current table 1 (if NA, starts generating one from scratch)
 table1_add_row = function( x, # vector
-                          var.header,  # variable name to use in table
-                          type,
-                          perc.digits = 0,
-                          num.digits = 2,
-                          countNA = TRUE,
-                          .tab1 = NULL,
-                          print = TRUE ) {
+                           var.header,  # variable name to use in table
+                           type,
+                           perc.digits = 0,
+                           num.digits = 2,
+                           countNA = TRUE,
+                           .tab1 = NULL,
+                           print = TRUE ) {
   
   useNA = ifelse( countNA == TRUE, "ifany", "no" )
   
@@ -425,14 +569,14 @@ my_quality_table = function(.dat) {
 
 # edited from the package version (marked with "~~") to fix the colored blocks issues
 significance_funnel2 = function( yi,
-                                vi,
-                                xmin = min(yi),
-                                ymin = min( sqrt(vi) ),
-                                xmax = max(yi),
-                                ymax = max( sqrt(vi) ),
-                                est.N = NA,
-                                est.all = NA,
-                                plot.pooled = TRUE ) {
+                                 vi,
+                                 xmin = min(yi),
+                                 ymin = min( sqrt(vi) ),
+                                 xmax = max(yi),
+                                 ymax = max( sqrt(vi) ),
+                                 est.N = NA,
+                                 est.all = NA,
+                                 plot.pooled = TRUE ) {
   
   d = data.frame(yi, vi)
   d$sei = sqrt(vi)
@@ -473,7 +617,7 @@ significance_funnel2 = function( yi,
                       vi = d$vi,
                       method="FE")$b
   }
-
+  
   
   # set up pooled estimates for plotting
   pooled.pts = data.frame( yi = c(est.N, est.all),
@@ -552,13 +696,13 @@ significance_funnel2 = function( yi,
     annotate(geom = "text", x = 1.25, y = .57, label = "Z = 1.96", color = "gray",
              angle = 38) 
   
-   
   
   
-    # geom_polygon( data = datPoly, mapping=aes(x=datPoly$yi, y=datPoly$sei),
-    #               fill=colors[2],alpha=0.2,color=NA) +
-    # geom_polygon( data = datPoly2, mapping=aes(x=datPoly2$yi, y=datPoly2$sei),
-    #               fill=colors[1],alpha=0.2,color=NA)
+  
+  # geom_polygon( data = datPoly, mapping=aes(x=datPoly$yi, y=datPoly$sei),
+  #               fill=colors[2],alpha=0.2,color=NA) +
+  # geom_polygon( data = datPoly2, mapping=aes(x=datPoly2$yi, y=datPoly2$sei),
+  #               fill=colors[1],alpha=0.2,color=NA)
   
   plot(p.funnel)
   return(p.funnel)
