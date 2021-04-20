@@ -32,12 +32,11 @@ if ( start.res.from.scratch == TRUE ) {
 #  so this one is exempt from the checkpoint installation
 library(metafor)
 
-# load packages
-# this will reinstall the versions of all packages as they existed on 
-#  the date MBM analyzed
-# https://cran.r-project.org/web/packages/checkpoint/vignettes/checkpoint.html
-library(checkpoint)
-checkpoint("2020-02-12")
+# This script uses renv to preserve the R environment specs (e.g., package versions.)
+library(renv)
+# run this if you want to reproduce results using the R environment we had:
+# library(here); setwd(here)
+# renv::restore()
 
 
 detach("package:plyr", unload=TRUE)  # is a PITA if using dplyr
@@ -64,7 +63,6 @@ library(grateful)
 setwd(results.dir)
 writeLines( capture.output(sessionInfo()),
             paste( Sys.Date(), "sessionInfo.txt", sep="_" ) )
-
 
 
 
@@ -270,7 +268,7 @@ update_result_csv( name = "Number estimates hopeless",
 
 
 
-################################# TABLE 2 (INDIVIDUAL STUDY CHARACTERISTICS) #################################
+################################# TABLE 1 (INDIVIDUAL STUDY CHARACTERISTICS) #################################
 
 # MM audited 2020-8-7
 
@@ -627,13 +625,11 @@ t = my_quality_table(d)
 t.pub = my_quality_table(d[ d$published == 1, ])
 t.unpub = my_quality_table(d[ d$published == 0, ])
 
-t$Published = t.pub$Summary
-t$Unpublished = t.unpub$Summary
-
 setwd(results.dir)
 setwd("Tables to prettify")
-write.csv(print(t), "study_quality_table.csv")
-
+write.csv(print(t), "study_quality_table_column_1_all_studies.csv")
+write.csv(print(t.pub), "study_quality_table_column_2_published_studies.csv")
+write.csv(print(t.unpub), "study_quality_table_column_3_unpublished_studies.csv")
 
 ##### Individual Stats on Quality Characteristics #####
 
@@ -1752,7 +1748,6 @@ print( xtable(corrs), include.rownames = FALSE )
 
 # can't include country; causes sparsity and eigendecomposition 
 #  problems because has too much missing data
-
 mod.sets = list( c( "x.has.text",
                     "x.has.visuals",
                     "x.suffer",
@@ -2050,8 +2045,7 @@ ggsave( "continuous_age.pdf",
 
 ##### Title/Abstract Screening #####
 # calculate total ratings shared by each pair of reviewers to help with weighted average
-d4 = d4 %>% rowwise() %>%
-  mutate(tot = sum(A.Yes..B.Yes, A.Yes..B.No, A.No..B.Yes, A.No..B.No))
+d4$total = d4$A.Yes..B.Yes + d4$A.Yes..B.No + d4$A.No..B.Yes + d4$A.No..B.No
 
 mean.kappa = sum(d4$Cohen.s.Kappa * d4$tot) / sum(d4$tot)
 
@@ -2062,9 +2056,7 @@ update_result_csv( name = "Mean IRR tiab screen",
 
 ##### Full-Text Screening #####
 # calculate total ratings shared by each pair of reviewers to help with weighted average
-d5 = d5 %>% rowwise() %>%
-  mutate(tot = sum(A.Include..B.Include, A.Include..B.Exclude, A.Exclude..B.Include, A.Exclude..B.Exclude))
-
+d5$tot = d5$A.Include..B.Include + d5$A.Include..B.Exclude + d5$A.Exclude..B.Include + d5$A.Exclude..B.Exclude
 mean.kappa = sum(d5$Cohen.s.Kappa * d5$tot) / sum(d5$tot)
 
 update_result_csv( name = "Mean IRR full text",
@@ -2128,10 +2120,6 @@ for ( v in vars ){
                      value = round(kap, digits),
                      print = TRUE )
 }
-
-
-
-
 
 
 
