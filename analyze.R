@@ -1345,63 +1345,55 @@ shapiro.test(d$ens)
 qqnorm(d$ens); qqline(d$ens)
 
 
-##### Calibrated That for Shifting Point Estimate to Null #####
-# reduce to less than 100*r% the proportion of effects above q
+##### That for Shifting Point Estimate to Null #####
+
 B.vec = seq(1, 2, 0.01)
 
-That.est = That_causal_bt( original = d,
-                           indices = 1:nrow(d),  # don't bootstrap (keep original sample)
-                           .calib.name = "ens",
-                           .B.vec = B.vec,
-                           .estimand = "est" )
-
-update_result_csv( name = "SDB That-1 shift est to 1",
-                   section = 2,
-                   value = round( 100*(That.est-1), 0 ),
-                   print = TRUE )
-
-
+# for consistency with how we report That for shifting the proportion, 
+#  get CIs for the "E-value" itself rather than E-value for CI
 if (npphat.from.scratch == TRUE) {
-  
+
   # CI for That
   # reduce bootstrap reps here because takes forever (has to fit robumeta each time)
   boot.res = suppressWarnings( boot( data = d,
                                      parallel = "multicore",
-                                     R = 500, 
+                                     R = 500,
                                      statistic = That_causal_bt,
                                      # below are passed to fn above
                                      .calib.name = "ens",
                                      .B.vec = B.vec,
                                      .estimand = "est" ) )
-  
+
   bootCIs = boot.ci(boot.res,
                     type="bca",
                     conf = 0.95 )
-  
+
   lo.bt = bootCIs$bca[4]
   hi.bt = bootCIs$bca[5]
   SE.bt = sd(boot.res$t)
-  
+
   res = data.frame(est = That.est,
-                   lo = lo.bt, 
+                   lo = lo.bt,
                    hi = hi.bt)
-  
+
   setwd(results.dir)
   write.csv( res,
              "That_shift_est_to_null.csv" )
-  
+
 } else {  # if not bootstrapping from scratch
-  
+
   setwd(results.dir)
   res = read.csv("That_shift_est_to_null.csv")
 }
 
-
+# for the estimate, use the pooled estimate from meta-analysis itself
+# res$est is equal to 1.23 instead of 1.22 because of the granularity in B.vec
 update_result_csv( name = "SDB That-1 shift est to 1",
                    section = 2,
-                   value = round( 100*(res$est - 1), 0 ),
+                   value = round( 100*( exp(meta.rob$b.r) - 1), 0 ),
                    print = FALSE )
 
+# 
 update_result_csv( name = "SDB That-1 lo shift est to 1",
                    section = 2,
                    value = round( 100*(res$lo - 1), 0 ),
@@ -1411,6 +1403,7 @@ update_result_csv( name = "SDB That-1 hi shift est to 1",
                    section = 2,
                    value = round( 100*(res$hi - 1), 0 ),
                    print = TRUE )
+
 
 
 ##### Calibrated That for Phat(RR>1.1) < 0.10 #####
@@ -1423,19 +1416,19 @@ update_result_csv( name = "SDB That-1 hi shift est to 1",
 q = log(1.1)
 r = 0.10
 
-That.p = That_causal_bt( original = d,
-                         indices = 1:nrow(d),  # don't bootstrap (keep original sample)
-                         .calib.name = "ens",
-                         .q = q,
-                         .r = r,
-                         .B.vec = B.vec,
-                         .tail = "above",
-                         .estimand = "Phat" )
-
-update_result_csv( name = "SDB That-1 shift est to 1",
-                   section = 2,
-                   value = round( 100*(That.p-1), 0 ),
-                   print = FALSE )
+# That.p = That_causal_bt( original = d,
+#                          indices = 1:nrow(d),  # don't bootstrap (keep original sample)
+#                          .calib.name = "ens",
+#                          .q = q,
+#                          .r = r,
+#                          .B.vec = B.vec,
+#                          .tail = "above",
+#                          .estimand = "Phat" )
+# 
+# update_result_csv( name = "SDB That-1 shift est to 1",
+#                    section = 2,
+#                    value = round( 100*(That.p-1), 0 ),
+#                    print = FALSE )
 
 
 if (npphat.from.scratch == TRUE) {
